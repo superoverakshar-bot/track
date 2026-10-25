@@ -30,8 +30,9 @@ export function defaultSettings() {
 export function emptyDay() {
   return {
     wakeAt: null,
-    pouches: [], // [{ ts, flags: [] }]
+    pouches: [], // [{ ts, flags: [], trigger? }]
     saved: 0,
+    urges: [], // beaten urges [{ ts, trigger? }]
     waterMl: 0,
     morningWater: false,
     sprouts: false,
@@ -59,7 +60,7 @@ function fresh() {
     days: {},
     walks: [], // [{ id, date, durationMin, distanceKm, mode, energy, ts }]
     waist: [], // [{ date, inches }]
-    craving: null, // { startedAt, endsAt, water }
+    craving: null, // { startedAt, endsAt, water, trigger }
     walkTimer: null, // { startedAt, mode, pausedAt, pausedMs }
     walkDraft: null, // prefill for the walk log after a timed session
     hold: null, // { kind: 'plank'|'hang', startedAt }
@@ -68,6 +69,7 @@ function fresh() {
     dismissed: null, // { day, ids } suggestions hidden for today
     badgesSeen: [], // achievement ids already celebrated
     perfectDay: null, // last day a 5/5 was celebrated
+    freeMilestone: null, // { since, hours } pouch-free stretch last celebrated
     notify: { enabled: false, push: false, endpoint: null, lastSync: 0, syncedHash: '', once: {} },
   };
 }

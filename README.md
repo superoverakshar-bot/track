@@ -6,15 +6,15 @@ An installable web app (PWA) for a 90-day health reset, with reminders that arri
 
 | Pillar | What the app does |
 |---|---|
-| **1. Habit tapering** | Daily cap computed from your start date and baseline, a 90-minute morning lock, the 2-hour gap rule from day 31, a 15-minute urge buffer with a 200 ml water check, and honest rule-break logging. Also counts urges beaten ("pouches saved") and has an alcohol guardrail: designated days, a drink cap, 1:1 water and zero-day runs. |
+| **1. Tansen taper** (the main focus) | The Today screen opens on the taper: pouches left, a live "next pouch fits at…" countdown, and one-tap **I have an urge** / **Log pouch**. The daily cap comes from your start date and baseline; the app spreads what's left evenly until an hour before bed, never inside the 90-minute morning lock or (from day 31) the 2-hour gap rule. The 15-minute urge buffer has a breathing guide, a 200 ml water check, your "why" and a counter-move for the trigger you tag. Each pouch and beaten urge is tagged with its trigger (after a meal, chai, stress, boredom, …), and the **Taper** tab shows your top triggers with a plan for the #1, weekly progress (avg/day, % below baseline, under-cap streak, time pouch-free), an urge SOS toolkit, what to expect from withdrawal by phase, and the alcohol guardrail. |
 | **2. Stamina & mileage** | Full-screen 30-minute interval timer for 4:1, 3:2 or continuous sessions, with beeps, vibration and screen wake-lock. The phase switches automatically by week. Logs distance, pace and energy, tracks your personal best and suggests the next +100–150 m target. |
 | **3. Calisthenics & core** | Quick-tap counters for push-ups, squats, pull-ups and core reps. Plank and dead-hang stopwatch. Morning micro-set detection, a Mon/Wed/Fri circuit round tracker and a weekly waist log. |
 | **4. Vegetarian nutrition** | Morning 500 ml water, a water meter, sprouts/protein/vascular-booster checkboxes, the 4 PM Energy Shield, and the 2.5-hour dinner cutoff countdown. |
 | **Daily non-negotiables** | Five checks scored 0–5 each day, a streak and a 90-day calendar heatmap. |
-| **Smart coach** | Turns your logs into ranked, time-aware next actions: craving-peak warnings, cap pacing ("one every 70 min at most"), water behind pace, and the habits that actually lift *your* energy and focus. Also a daily energy/focus/sleep check-in and a "what your data says" panel. |
+| **Smart coach** | Turns your logs into ranked, time-aware next actions: taper first (craving-peak warnings, cap pacing such as "the next one fits at 15:40", your #1 trigger and its counter-move), then water behind pace, and the habits that actually lift *your* energy and focus. Also a daily energy/focus/sleep check-in and a "what your data says" panel. |
 | **AI coach (optional)** | Gemini 3.8 Flash (via OpenRouter) reads a numbers-only summary of your last 14 days and writes a 24-hour plan, or answers your question. |
 | **Bedroom stamina (private)** | Pelvic-floor training (3 sets/day), a private duration log with trend, and evidence-based techniques. Never shown on the Today screen or in notifications. |
-| **Motivation** | A sunrise-themed Today hero with a daily inspiration line, your personal "why", pouches avoided, money saved (₹) and streak. A breathing animation during the urge buffer, confetti for wins (urge beaten, perfect day, personal bests), and 15 achievement badges. |
+| **Motivation** | A sunrise-themed Today hero with a daily inspiration line, your personal "why", pouches avoided, money saved (₹) and streak. A breathing animation during the urge buffer, confetti for wins (urge beaten, perfect day, personal bests), and 18 achievement badges (including Trigger detective, Trending down and Lock keeper). Pouch-free stretches of 24 h, 48 h, 72 h, 1 week, 2 weeks and 30 days get their own celebration. |
 | **Progress** | Pouches vs. the 90-day cap, 30-minute distance next to pouches per day (same dates, two charts), daily reps, waist trend. |
 
 Reminders adapt to what you've logged. If you already had the 4 PM snack, the 4 PM push says "Shield done ✓"; if you're behind on water it tells you by how much; the wake-up push recaps yesterday.
@@ -101,6 +101,7 @@ Every reminder can be switched on or off in Settings. Times tied to your schedul
 | Hydration checks | 11:00, 18:00 (editable) |
 | Pelvic-floor set | 14:00 (editable; on when *Bedroom stamina* is a focus area) |
 | Sprouts + protein before lunch | 12:45 (editable) |
+| Afternoon taper check | 15:30 (editable): pouches used vs cap, pacing and your craving peak |
 | 4:00 PM Energy Shield | 16:00 (editable) |
 | 30-min mileage session | walk time |
 | Calisthenics circuit | circuit days at circuit time |
@@ -127,6 +128,8 @@ Caps come from your **baseline** (pouches/day before day 1; default 20). Each bl
 
 A tracking day runs from 04:00 to 03:59, so a late night counts toward the day you started.
 
+**Pacing within a day:** the pouches left are spread evenly from your last pouch (or the end of the morning lock) until last call, one hour before bed, at least 30 minutes apart and at least 2 hours apart from day 31. If you log one early, the app asks you to run the buffer first, and the next window moves later so the cap still lasts the day.
+
 ## Local development
 
 ```bash
@@ -145,8 +148,10 @@ public/              static PWA (no build step)
   js/plan.js         taper caps, phases, walk intervals (shared with the server)
   js/reminders.js    reminder catalogue + notification copy (shared with the server)
   js/store.js        localStorage state
+  js/taper.js        taper engine: pacing windows, triggers, weekly progress, SOS, withdrawal guide
   js/logic.js        rules, checklist, streaks, stats
   js/coach.js        smart coach: suggestions, patterns, adaptive reminder text, AI summary
+  js/achievements.js badges unlocked from your logs
   js/notify.js       permission, push subscription, local fallback timers
   js/charts.js       SVG charts with tooltips and data tables
   js/views/*.js      Today, Coach, Taper, Move, Fuel, Progress, Settings

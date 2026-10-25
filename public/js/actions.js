@@ -1,6 +1,7 @@
 // User actions, wired to elements via data-action="name".
 import { BUFFER_MIN, BUFFER_WATER_ML, CIRCUIT_ROUND, GAP_MIN, MORNING_LOCK_MIN } from './plan.js';
 import { FLAG_TEXT, bufferEnds, cravingState, planFor, pouchFlags } from './logic.js';
+import { TRIGGERS, nextWindow } from './taper.js';
 import { cancelOnce, scheduleOnce } from './notify.js';
 import { dayRecord, getState, todayKey, update } from './store.js';
 import { clock, dialog, esc, toast } from './ui.js';
@@ -23,29 +24,40 @@ export async function logPouch() {
   const crav = cravingState(now);
   const rec = dayRecord(key);
   const flags = pouchFlags(key, rec, now, !!crav?.done);
-  if (flags.length) {
-    const list = flags.map((f) => `<li>${esc(FLAG_TEXT[f])}</li>`).join('');
+  const win = nextWindow(key, rec, now);
+  const early = win.next && now < win.next && !flags.includes('morning') && !flags.includes('gap');
+  let trigger = crav?.trigger || null;
+
+  if (flags.length || early || !trigger) {
+    const notes = [];
+    if (flags.length) notes.push(`<ul class="bullets">${flags.map((f) => `<li>${esc(FLAG_TEXT[f])}</li>`).join('')}</ul>`);
+    if (early) notes.push(`<p class="small" style="margin-top:8px">⏳ Your pacing plan says the next pouch fits at <b>${clock(win.next)}</b>. Can you wait it out?</p>`);
+    if (flags.length) notes.push(`<p class="small muted" style="margin-top:8px">Logging honestly beats not logging. If you can, run the ${BUFFER_MIN}-minute buffer first; most urges pass.</p>`);
     const buttons = [{ label: 'Cancel', value: null }];
     if (!crav) buttons.push({ label: 'Start buffer', value: 'buffer', cls: 'primary' });
-    else buttons.push({ label: 'Keep waiting', value: null, cls: 'primary' });
-    buttons.push({ label: 'Log anyway', value: 'log', cls: 'danger' });
+    if (trigger) buttons.push({ label: 'Log anyway', value: 'log', cls: 'danger' });
     const choice = await dialog({
-      title: 'This pouch breaks a rule',
-      html: `<ul class="bullets">${list}</ul><p class="small muted" style="margin-top:10px">Logging honestly beats not logging. If you can, run the ${BUFFER_MIN}-minute buffer first — most urges pass.</p>`,
+      title: flags.length ? 'This pouch breaks a rule' : early ? 'A little early' : 'Log a pouch',
+      html: notes.join(''),
+      choicesLabel: trigger ? '' : 'What triggered it? Tap to log',
+      choices: trigger ? [] : [...TRIGGERS.map((t) => ({ label: `${t.emoji} ${t.label}`, value: `t:${t.id}` })), { label: '🤷 Not sure', value: 't:' }],
       buttons,
     });
     if (choice === 'buffer') return startCraving();
-    if (choice !== 'log') return;
+    if (typeof choice === 'string' && choice.startsWith('t:')) trigger = choice.slice(2) || null;
+    else if (choice !== 'log') return;
   }
   const plan = planFor(key);
   update((s) => {
-    dayRecord(key).pouches.push({ ts: now, flags });
+    dayRecord(key).pouches.push({ ts: now, flags, ...(trigger ? { trigger } : {}) });
     s.craving = null;
   });
   if (crav) cancelOnce('craving');
+  const after = nextWindow(key, dayRecord(key), now);
   const used = dayRecord(key).pouches.length;
   if (plan.gapRule) scheduleOnce('gap', now + GAP_MIN * MIN, { remaining: Math.max(0, plan.cap - used) });
-  toast(`Pouch logged · ${used} of ${plan.cap}`);
+  const nextText = after.next ? ` · next fits ${clock(after.next)}` : after.reason === 'cap' ? ' · that was the last one today' : '';
+  toast(`Pouch logged · ${used} of ${plan.cap}${nextText}`);
 }
 
 function setDay(fn) {
@@ -80,9 +92,14 @@ export const actions = {
     const d = dayRecord(todayKey());
     d.waterMl = clampAdd(d.waterMl, s.craving.water ? BUFFER_WATER_ML : -BUFFER_WATER_ML);
   }),
+  'craving-trigger': (el) => update((s) => {
+    if (s.craving) s.craving.trigger = s.craving.trigger === el.dataset.id ? null : el.dataset.id;
+  }),
   'craving-saved': () => {
     update((s) => {
-      dayRecord(todayKey()).saved += 1;
+      const d = dayRecord(todayKey());
+      d.saved += 1;
+      d.urges.push({ ts: Date.now(), ...(s.craving?.trigger ? { trigger: s.craving.trigger } : {}) });
       s.craving = null;
     });
     cancelOnce('craving');

@@ -12,6 +12,7 @@ export const REMINDERS = [
   { key: 'microset', label: 'Morning micro-set', anchor: 'wakeTime', offset: 20 },
   { key: 'water1', label: 'Hydration check (late morning)', time: '11:00' },
   { key: 'lunch', label: 'Sprouts + protein before lunch', time: '12:45' },
+  { key: 'taperCheck', label: 'Afternoon taper check', time: '15:30' },
   { key: 'shield', label: '4:00 PM Energy Shield', time: '16:00' },
   { key: 'water2', label: 'Hydration check (evening)', time: '18:00' },
   { key: 'kegel', label: 'Pelvic-floor set (Bedroom stamina focus)', time: '14:00', focus: 'stamina' },
@@ -98,6 +99,8 @@ export function buildMessage(key, ctx, now = Date.now(), data = {}) {
       return msg('💧 Hydration check', `Target ${water} L today. Drink a full glass now and log it.`, '/#fuel');
     case 'lunch':
       return msg('🥗 Sprouts before lunch', '1 bowl moong/chana sprouts + raw salad, then 100–150 g paneer, dal, curd or soya.', '/#fuel');
+    case 'taperCheck':
+      return msg('🌿 Taper check', `${capText}. Urge coming? Start the 15-minute buffer before reaching for a pouch.`);
     case 'shield':
       return msg('🛡️ 4:00 PM Energy Shield', 'Roasted chana, soaked almonds/walnuts or chaas — now. Beat the 5 PM crash that drives cravings.', '/#fuel');
     case 'walk': {

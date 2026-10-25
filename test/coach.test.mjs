@@ -67,6 +67,7 @@ test('cap pacing kicks in when ahead of pace', () => {
   });
   const pace = coach(at(today, '11:00'), { notifyMode: 'push' }).suggestions.find((x) => x.id === 'pace');
   assert.match(pace.title, /Ahead of pace: 8 of 15/);
+  assert.match(pace.body, /^7 pouches left for today\. The next one fits at \d\d:\d\d, then at most one every \d+ h \d\d m\./);
 });
 
 test('smart reminder lines reflect what was logged', () => {

@@ -8,6 +8,7 @@ import {
 import { checklist, cutoffTs, microSetDone, morningLockEnd, planFor, streak, totalReps, wakeTs } from './logic.js';
 import { resolveReminders } from './reminders.js';
 import { emptyDay, getState, peekDay, todayKey } from './store.js';
+import { fmtGap, nextWindow, triggerStats } from './taper.js';
 
 const MIN = 60000;
 const HOUR = 3600000;
@@ -180,11 +181,13 @@ export function coach(now = Date.now(), { notifyMode = 'off' } = {}) {
         { label: 'Start buffer', action: 'craving-start' });
     } else {
       const expected = plan.cap * clamp01((now - lockEnd) / (bed - lockEnd));
-      const minsLeft = Math.round((bed - now) / MIN);
-      const every = Math.max(Math.round(minsLeft / left), plan.gapRule ? GAP_MIN : 0);
       if (used > expected + 1.5) {
+        const w = nextWindow(key, rec, now);
+        const when = w.next
+          ? `The next one fits at ${clock(w.next)}${left > 1 ? `, then at most one every ${fmtGap(w.spacingMin)}` : ''}.`
+          : `Last call was ${clock(w.lastCall)}.`;
         add(84, 'pace', 'taper', `Ahead of pace: ${used} of ${plan.cap} by ${clock(now)}`,
-          `Spread the remaining ${left} over ${Math.floor(minsLeft / 60)} h ${pad(minsLeft % 60)} m: at most one every ${every} min. Next urge, buffer first.`,
+          `${left} ${left === 1 ? 'pouch' : 'pouches'} left for today. ${when} Next urge, buffer first.`,
           { label: 'Start buffer', action: 'craving-start' });
       } else if (used > 0 && used + 1 < expected) {
         wins.push(`Under pace: ${used} of ${plan.cap} by ${clock(now)}`);
@@ -267,6 +270,23 @@ export function coach(now = Date.now(), { notifyMode = 'off' } = {}) {
       add(68, 'zero', 'taper', `Zero day in ${plural(left, 'day')}`,
         'Plan the hardest moments now (after meals, 4–6 PM, with friends) and pick a replacement for each: elaichi, saunf, a 2-minute walk.');
     }
+  }
+
+  // ---- taper: triggers ----
+  const trig = triggerStats(14);
+  if (trig.total >= 5) {
+    const top = trig.list[0];
+    const beatRate = top.total ? top.beaten / top.total : 0;
+    patterns.push({ id: 'trigger', pillar: 'taper', text: `${top.emoji} ${top.label} sets off ${Math.round(top.share * 100)}% of your urges; you beat ${Math.round(beatRate * 100)}% of those.` });
+    const best = trig.list.filter((t) => t.total >= 3).sort((a, b) => b.beaten / b.total - a.beaten / a.total)[0];
+    if (best && best.id !== top.id && best.beaten / best.total >= 0.5) {
+      patterns.push({ id: 'trigger-best', pillar: 'taper', text: `You beat ${best.emoji} ${best.label.toLowerCase()} urges ${Math.round((best.beaten / best.total) * 100)}% of the time. Use the same moves on ${top.label.toLowerCase()}.` });
+    }
+    add(67, 'trigger', 'taper', `Your #1 trigger: ${top.emoji} ${top.label}`, top.tip);
+  }
+  const untagged = days7.slice(0, 3).flatMap(([, d]) => d.pouches).filter((p) => !p.trigger).length;
+  if (untagged >= 5) {
+    add(45, 'tag', 'taper', 'Tag what triggers each pouch', 'When you log a pouch or beat an urge, tap its trigger. After a few days the coach builds a plan around your top trigger.');
   }
 
   // ---- fuel ----
@@ -437,6 +457,8 @@ export function coach(now = Date.now(), { notifyMode = 'off' } = {}) {
     if (diffDays(last.date, key) <= 3 && last.distanceKm >= Math.max(...walks.map((w) => w.distanceKm))) wins.push(`Distance PB: ${last.distanceKm.toFixed(2)} km`);
   }
 
+  // Quitting Tansen comes first.
+  for (const x of suggestions) if (x.pillar === 'taper') x.priority += 6;
   suggestions.sort((a, b) => b.priority - a.priority);
   return { suggestions, patterns, wins, peak, plan };
 }
@@ -481,6 +503,12 @@ export function smartSnapshot(now = Date.now()) {
   if (rec.kegels >= KEGEL_SETS) lines.kegel = { title: '🧘 Pelvic-floor sets done ✓', body: `All ${KEGEL_SETS} done today. Same time tomorrow.` };
   else if (rec.kegels) lines.kegel = { body: `Set ${rec.kegels + 1} of ${KEGEL_SETS}: 10 slow squeezes (3 s hold), then 10 quick ones.` };
   const done = checklist(key, rec).filter((i) => i.done).length;
+  const w = nextWindow(key, rec, at.taperCheck || now);
+  lines.taperCheck = {
+    body: w.reason === 'cap'
+      ? `${rec.pouches.length} of ${plan.cap} used: cap reached. Every urge from here gets the 15-minute buffer.`
+      : `${rec.pouches.length} of ${plan.cap} used, ${w.remaining} left. At most one every ${w.spacingMin} min, last call ${clock(w.lastCall)}.${peak ? ` Your peak is ${peak.label}.` : ''}`,
+  };
   lines.checkin = { body: `Today so far: ${rec.pouches.length} of ${plan.cap} pouches, ${litres(rec.waterMl)} L water, ${done}/5 non-negotiables.${rec.checkin ? '' : ' Rate your energy and focus too.'}` };
 
   // Tomorrow's wake-up message recaps today.

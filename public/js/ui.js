@@ -100,20 +100,24 @@ export function toast(text, kind = '') {
 
 // ---- dialogs ----
 
-// buttons: [{ label, value, cls }] → resolves to the clicked value (or null on dismiss)
-export function dialog({ title, html = '', buttons = [{ label: 'OK', value: true, cls: 'primary' }] }) {
+// buttons: [{ label, value, cls }] → resolves to the clicked value (or null on dismiss).
+// choices: optional one-tap options shown as a chip grid above the buttons.
+export function dialog({ title, html = '', choices = [], choicesLabel = '', buttons = [{ label: 'OK', value: true, cls: 'primary' }] }) {
   return new Promise((resolve) => {
+    const all = [...choices, ...buttons];
     const dlg = document.createElement('dialog');
     dlg.innerHTML = `<form method="dialog" class="dlg">
       <h3>${esc(title)}</h3>
       ${html ? `<div>${html}</div>` : ''}
-      <div class="btn-row">${buttons.map((b, i) => `<button class="btn ${b.cls || ''}" value="${i}">${esc(b.label)}</button>`).join('')}</div>
+      ${choices.length ? `<div>${choicesLabel ? `<p class="small" style="font-weight:700;margin-bottom:8px">${esc(choicesLabel)}</p>` : ''}
+        <div class="choice-grid">${choices.map((c, i) => `<button class="chip-btn" value="${i}">${esc(c.label)}</button>`).join('')}</div></div>` : ''}
+      <div class="btn-row">${buttons.map((b, i) => `<button class="btn ${b.cls || ''}" value="${choices.length + i}">${esc(b.label)}</button>`).join('')}</div>
     </form>`;
     document.body.append(dlg);
     dlg.addEventListener('close', () => {
       const i = dlg.returnValue === '' ? -1 : Number(dlg.returnValue);
       dlg.remove();
-      resolve(i >= 0 ? buttons[i].value : null);
+      resolve(i >= 0 ? all[i].value : null);
     });
     dlg.showModal();
   });

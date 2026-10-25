@@ -2,6 +2,7 @@ import { PROGRAM_DAYS, WALK_MIN, WALK_PHASES, walkSegments } from './plan.js';
 import { planFor, scoreFor } from './logic.js';
 import { badges } from './achievements.js';
 import { celebrate } from './joy.js';
+import { pouchFreeHours } from './taper.js';
 import { actions } from './actions.js';
 import { initNotifications, scheduleLocal } from './notify.js';
 import { getState, subscribe, todayKey, update } from './store.js';
@@ -17,8 +18,8 @@ import * as onboarding from './views/onboarding.js';
 
 const ROUTES = {
   today: { view: today, title: 'Today', icon: 'home', tab: 'Today' },
+  taper: { view: taper, title: 'Tansen taper', icon: 'leaf', tab: 'Taper' },
   coach: { view: coachView, title: 'Coach', icon: 'spark', tab: 'Coach' },
-  taper: { view: taper, title: 'Taper', icon: 'leaf', tab: 'Taper' },
   move: { view: move, title: 'Move', icon: 'run', tab: 'Move' },
   fuel: { view: fuel, title: 'Fuel', icon: 'bowl', tab: 'Fuel' },
   progress: { view: progress, title: 'Progress', icon: 'chart', tab: 'Progress' },
@@ -132,6 +133,10 @@ function render() {
 
 // ---------- celebrations ----------
 
+// Pouch-free stretches worth a party (hours since the last pouch).
+const FREE_HOURS = [24, 48, 72, 168, 336, 720];
+const freeLabel = (h) => (h < 168 ? `${h} hours` : h === 168 ? '1 week' : h === 336 ? '2 weeks' : '30 days');
+
 let milestoneTimer;
 let lastParty = 0;
 function checkMilestones() {
@@ -146,6 +151,17 @@ function checkMilestones() {
       update((st) => { st.perfectDay = key; });
       celebrate('Perfect day! ⭐ All 5 non-negotiables done');
       return;
+    }
+    const free = pouchFreeHours();
+    if (free) {
+      const hit = FREE_HOURS.filter((h) => free.hours >= h).pop();
+      const seen = s.freeMilestone?.since === free.since ? s.freeMilestone.hours : 0;
+      if (hit && hit > seen) {
+        lastParty = Date.now();
+        update((st) => { st.freeMilestone = { since: free.since, hours: hit }; });
+        celebrate(`${freeLabel(hit)} pouch-free! 🕊️ Your body is already healing`);
+        return;
+      }
     }
     const fresh = badges().filter((b) => b.unlocked && !s.badgesSeen.includes(b.id));
     if (fresh.length) {

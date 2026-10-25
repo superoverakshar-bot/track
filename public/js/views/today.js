@@ -1,38 +1,69 @@
 import { PROGRAM_DAYS } from '../plan.js';
 import { avoidedPouches, coach } from '../coach.js';
-import { headline, lineOfTheDay, partOfDay } from '../joy.js';
-import { planFor, streak } from '../logic.js';
+import { lineOfTheDay, partOfDay } from '../joy.js';
+import { gapEnd, morningLockEnd, planFor } from '../logic.js';
+import { nextWindow, taperProgress } from '../taper.js';
 import { mode as notifyMode } from '../notify.js';
 import { emptyDay, getState, peekDay, todayKey } from '../store.js';
-import { esc, icon } from '../ui.js';
+import { clock, esc, icon } from '../ui.js';
 import { suggestionRow, visibleSuggestions } from './coach.js';
-import { cardHead, checklistCard, microProgress, taperCard, walkPhaseLine, walkSummary, waterCard } from './parts.js';
+import { bufferCard, cardHead, checklistCard, microProgress, walkPhaseLine, walkSummary, waterCard } from './parts.js';
 
-function heroCard(key) {
+// What the taper says right now, with a time to count down to.
+function taperStatus(key, rec, plan, now) {
+  const used = rec.pouches.length;
+  const lockEnd = morningLockEnd(key, rec);
+  const g = gapEnd(key, rec);
+  const w = nextWindow(key, rec, now);
+  if (plan.cap === 0 && used === 0 && plan.day >= 1) return { icon: '🕊️', text: 'Pouch-free day. Every urge gets the buffer.' };
+  if (w.reason === 'cap') return used > plan.cap ? { icon: '⚠️', text: `${used - plan.cap} over cap. Buffer every urge now.` } : { icon: '🛑', text: 'Cap reached. Buffer every urge from here.' };
+  if (now < lockEnd) return { icon: '🔒', text: `Morning lock until ${clock(lockEnd)}`, until: lockEnd };
+  if (g && now < g) return { icon: '⏳', text: `2-hour gap until ${clock(g)}`, until: g };
+  if (w.reason === 'bedtime') return { icon: '🌙', text: `Done for today. Last call was ${clock(w.lastCall)}.` };
+  if (w.next && now < w.next) return { icon: '⏳', text: `Next pouch fits at ${clock(w.next)}`, until: w.next };
+  return { icon: '✅', text: 'Window open. Or ride it out and bank a save.' };
+}
+
+function heroCard(key, rec, now) {
   const st = getState();
   const s = st.settings;
   const plan = planFor(key);
   const pod = partOfDay();
+  const used = rec.pouches.length;
+  const left = plan.cap - used;
   const avoided = avoidedPouches();
   const rupees = s.pricePerPouch > 0 ? Math.round(avoided * s.pricePerPouch) : null;
   const beaten = Object.values(st.days).reduce((a, d) => a + d.saved, 0);
-  const day = Math.min(Math.max(plan.day, 0), PROGRAM_DAYS);
-  const r = 27;
+  const status = taperStatus(key, rec, plan, now);
+  const { capStreak } = taperProgress();
+  const r = 50;
   const c = 2 * Math.PI * r;
-  return `<section class="hero ${pod.key}">
-    <div class="hero-ring" role="img" aria-label="Day ${day} of ${PROGRAM_DAYS}">
-      <svg viewBox="0 0 66 66"><circle cx="33" cy="33" r="${r}" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="7"/>
-      <circle cx="33" cy="33" r="${r}" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - day / PROGRAM_DAYS)}"/></svg>
-      <span><b>${day}</b>of ${PROGRAM_DAYS}</span></div>
-    <p class="hello">${pod.hello} ${pod.emoji}</p>
-    <h2>${esc(headline(plan.phase.id))}</h2>
-    <p class="quote">“${esc(lineOfTheDay(key))}”</p>
+  const frac = plan.cap > 0 ? Math.max(0, left) / plan.cap : used ? 0 : 1;
+  const title = left > 0 ? `${left} left today` : left === 0 ? (plan.cap ? 'Cap reached' : 'Pouch-free day') : `${-left} over cap`;
+  const dayText = plan.day < 1 ? 'Plan starts soon' : plan.day > PROGRAM_DAYS ? 'Program complete' : `Day ${plan.day} · ${plan.phase.name}`;
+  return `<section class="hero taper ${pod.key}">
+    <p class="hello">${pod.hello} ${pod.emoji} · ${esc(dayText)}</p>
+    <div class="tp-grid">
+      <div class="left-ring" role="img" aria-label="${used} of ${plan.cap} pouches used today">
+        <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="${r}" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="11"/>
+        <circle cx="60" cy="60" r="${r}" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - frac)}"/></svg>
+        <div class="lbl"><b>${used}</b><span>of ${plan.cap} used</span></div></div>
+      <div>
+        <h2>${esc(title)}</h2>
+        <span class="status">${status.icon} ${esc(status.text)}${status.until ? ` · <span data-until="${status.until}"></span><span data-countdown="${status.until}" data-rerender hidden></span>` : ''}</span>
+      </div>
+    </div>
+    <div class="hero-actions">
+      <button class="btn white" data-action="craving-start" ${st.craving ? 'disabled' : ''}>😮‍💨 I have an urge</button>
+      <button class="btn glass" data-action="pouch-log">${icon('plus')}Log pouch</button>
+    </div>
     ${s.why ? `<p class="why">💜 <b>My why:</b> ${esc(s.why)}</p>` : '<p class="why">💜 <a href="#settings">Add your “why”</a>. It keeps you going when an urge hits.</p>'}
     <div class="hero-stats">
       <div><b>${avoided}</b><span>pouches avoided</span></div>
       <div>${rupees != null ? `<b>₹${rupees.toLocaleString('en-IN')}</b><span>money saved</span>` : `<b>${beaten}</b><span>urges beaten</span>`}</div>
-      <div><b>${streak().current}${streak().current ? '🔥' : ''}</b><span>day streak</span></div>
+      <div><b>${capStreak}${capStreak ? '🔥' : ''}</b><span>days under cap</span></div>
     </div>
+    <p class="quote small">“${esc(lineOfTheDay(key))}”</p>
   </section>`;
 }
 
@@ -83,9 +114,9 @@ export function render() {
   const rec = peekDay(key) || emptyDay();
   const now = Date.now();
   return `<div class="stack">
-    ${heroCard(key)}
+    ${heroCard(key, rec, now)}
+    ${bufferCard(now)}
     ${smartCard()}
-    ${taperCard(key, rec, now)}
     ${checklistCard(key, rec)}
     ${waterCard(rec, true)}
     ${moveCard(key, rec)}

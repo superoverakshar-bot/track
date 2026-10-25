@@ -1,45 +1,14 @@
 // Render fragments shared by several screens.
 import { BUFFER_MIN, BUFFER_WATER_ML, MICRO_SET, WALK_PHASES, paceText } from '../plan.js';
-import { checklist, cravingState, gapEnd, lastPouch, microSetDone, morningLockEnd, planFor, streak } from '../logic.js';
+import { checklist, cravingState, microSetDone, streak } from '../logic.js';
 import { getState } from '../store.js';
-import { clock, esc, icon, mmss, plural } from '../ui.js';
+import { esc, icon, mmss, plural } from '../ui.js';
 import { PILLAR_EMOJI } from '../joy.js';
+import { TRIGGERS, triggerById } from '../taper.js';
 
 export function cardHead(title, pillar, meta = '') {
   const dot = pillar ? `<span class="bubble ${pillar}" aria-hidden="true">${PILLAR_EMOJI[pillar] || '✨'}</span>` : '';
   return `<div class="card-head">${dot}<h2>${esc(title)}</h2>${meta ? `<span class="meta">${meta}</span>` : ''}</div>`;
-}
-
-export function ring(used, cap) {
-  const r = 50;
-  const c = 2 * Math.PI * r;
-  const frac = cap > 0 ? Math.min(used / cap, 1) : used > 0 ? 1 : 0;
-  const color = used > cap ? 'var(--bad)' : used === cap && cap > 0 ? 'var(--warn)' : 'url(#ringGrad)';
-  return `<div class="ring" role="img" aria-label="${used} of ${cap} pouches used">
-    <svg viewBox="0 0 120 120"><defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#7c3aed"/><stop offset=".55" stop-color="#db2777"/><stop offset="1" stop-color="#f97316"/></linearGradient></defs>
-    <circle class="track" cx="60" cy="60" r="${r}" fill="none" stroke-width="10"/>
-    <circle class="val" cx="60" cy="60" r="${r}" fill="none" stroke="${color}" stroke-width="10" stroke-linecap="round"
-      stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - frac)}"/></svg>
-    <div class="label"><b>${used}</b><span>of ${cap} cap</span></div></div>`;
-}
-
-export function taperBadges(key, rec, now) {
-  const plan = planFor(key);
-  const out = [];
-  const lockEnd = morningLockEnd(key, rec);
-  if (now < lockEnd) {
-    out.push(`<span class="badge warn">${icon('lock')}Morning lock · <span data-countdown="${lockEnd}" data-rerender></span></span>`);
-  } else {
-    out.push(`<span class="badge good">${icon('unlock')}Morning window done</span>`);
-  }
-  const g = gapEnd(key, rec);
-  if (g && now < g) out.push(`<span class="badge warn">${icon('hourglass')}Next pouch after ${clock(g)}</span>`);
-  else if (plan.gapRule) out.push(`<span class="badge info">${icon('hourglass')}2-hour gap rule</span>`);
-  const used = rec.pouches.length;
-  if (used > plan.cap) out.push(`<span class="badge bad">${icon('alert')}Over cap by ${used - plan.cap}</span>`);
-  else if (used === plan.cap) out.push(`<span class="badge warn">${icon('alert')}Cap reached</span>`);
-  return `<div class="badges">${out.join('')}</div>`;
 }
 
 export function cravingBlock(now) {
@@ -59,7 +28,9 @@ export function cravingBlock(now) {
       <div class="breathe" aria-hidden="true"><span class="in">Breathe in</span><span class="out">Breathe out</span></div>
       ${why ? `<p class="remember">Remember why: <b>${esc(why)}</b></p>` : ''}
       ${water}
-      <div class="small">Chew elaichi or roasted saunf, walk for 2 minutes, breathe out slowly. Urges peak and pass.</div>
+      <div><div class="small" style="font-weight:800;margin-bottom:6px">What's behind this urge?</div>
+      <div class="trigger-chips">${TRIGGERS.map((t) => `<button class="chip-btn" data-action="craving-trigger" data-id="${t.id}" aria-pressed="${c.trigger === t.id}">${t.emoji} ${esc(t.label)}</button>`).join('')}</div></div>
+      <div class="small">💡 ${esc(c.trigger ? triggerById(c.trigger).tip : 'Chew elaichi or roasted saunf, walk for 2 minutes, breathe out slowly. Urges peak and pass.')}</div>
       <div class="btn-row"><button class="btn good" data-action="craving-saved">${icon('check')}Urge passed</button>
       <button class="btn" data-action="pouch-log">Log pouch</button></div></div>`;
   }
@@ -70,19 +41,10 @@ export function cravingBlock(now) {
     <button class="btn" data-action="pouch-log">Log pouch</button></div></div>`;
 }
 
-export function taperCard(key, rec, now) {
-  const plan = planFor(key);
-  const last = lastPouch(rec);
-  return `<section class="card">
-    ${cardHead('Taper control', 'taper', plan.cap === 0 ? 'Zero-pouch day' : `Cap ${plan.cap} today`)}
-    <div class="taper-hero">${ring(rec.pouches.length, plan.cap)}
-      <div class="kv">
-        <div><div class="k">Since last pouch</div><div class="v">${last ? `<span data-since="${last}"></span>` : 'None today'}</div></div>
-        <div><div class="k">Urges beaten</div><div class="v">${rec.saved}</div></div>
-      </div></div>
-    <div style="margin-top:12px">${taperBadges(key, rec, now)}</div>
-    ${cravingBlock(now)}
-  </section>`;
+// The live urge buffer as its own card (Today shows it under the taper hero).
+export function bufferCard(now) {
+  if (!cravingState(now)) return '';
+  return `<section class="card" id="buffer">${cardHead('Urge buffer', 'taper', '15 min')}${cravingBlock(now)}</section>`;
 }
 
 export function checklistCard(key, rec) {

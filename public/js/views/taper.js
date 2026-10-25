@@ -4,7 +4,8 @@ import { timeChart } from '../charts.js';
 import { emptyDay, getState, peekDay, todayKey, update, dayRecord } from '../store.js';
 import { scheduleOnce } from '../notify.js';
 import { clock, esc, icon, plural, toast } from '../ui.js';
-import { cardHead } from './parts.js';
+import { bufferCard, cardHead } from './parts.js';
+import { SOS, WITHDRAWAL, fmtGap, lastPouchEver, nextWindow, taperProgress, triggerById, triggerStats, withdrawalFor } from '../taper.js';
 
 const FLAG_SHORT = { morning: 'Morning lock', gap: '< 2 h gap', cap: 'Over cap', nobuffer: 'No buffer' };
 
@@ -56,28 +57,28 @@ function rulesCard(key, rec) {
 }
 
 function logCard(key, rec) {
-  const items = rec.pouches.map((p, i) => `<div class="log-item"><span class="when">${clock(p.ts)}</span>
-    <span class="flags">${p.flags.length ? p.flags.map((f) => `<span class="badge bad" title="${esc(FLAG_TEXT[f])}">${FLAG_SHORT[f]}</span>`).join('') : '<span class="badge good">Within rules</span>'}</span>
-    <button class="del" data-action="pouch-del" data-i="${i}" aria-label="Remove pouch logged at ${clock(p.ts)}">${icon('trash')}</button></div>`).join('');
+  const plan = planFor(key);
+  const w = nextWindow(key, rec, Date.now());
+  const pacing = w.reason === 'cap' ? 'Cap reached. Every urge gets the buffer.'
+    : w.reason === 'bedtime' ? `Done for today. Last call was ${clock(w.lastCall)}.`
+      : w.remaining === 1
+        ? `Pacing plan: 1 pouch left. It fits ${w.next === w.lastCall ? `at ${clock(w.next)}, your last call` : `from ${clock(w.next)} until last call at ${clock(w.lastCall)}`}.`
+        : `Pacing plan: ${plural(w.remaining, 'pouch', 'pouches')} left, at most one every ${fmtGap(w.spacingMin)}, last call ${clock(w.lastCall)}. Next fits at ${clock(w.next)}.`;
+  const items = rec.pouches.map((p, i) => {
+    const t = triggerById(p.trigger);
+    return `<div class="log-item"><span class="when">${clock(p.ts)}</span>
+    <span class="flags">${t ? `<span class="badge">${t.emoji} ${esc(t.label)}</span>` : ''}${p.flags.length ? p.flags.map((f) => `<span class="badge bad" title="${esc(FLAG_TEXT[f])}">${FLAG_SHORT[f]}</span>`).join('') : '<span class="badge good">Within rules</span>'}</span>
+    <button class="del" data-action="pouch-del" data-i="${i}" aria-label="Remove pouch logged at ${clock(p.ts)}">${icon('trash')}</button></div>`;
+  }).join('');
   return `<section class="card">
-    ${cardHead("Today's pouches", null, `${rec.pouches.length} of ${planFor(key).cap} · ${rec.saved} saved`)}
-    ${items || '<div class="empty">No pouches logged today.</div>'}
-    <div class="btn-row" style="margin-top:10px"><button class="btn primary" data-action="craving-start">${icon('timer')}Start buffer</button><button class="btn" data-action="pouch-log">${icon('plus')}Log pouch</button></div>
+    ${cardHead("Today's plan", 'taper', `${rec.pouches.length} of ${plan.cap} · ${rec.saved} beaten`)}
+    <div class="note" style="margin-bottom:10px">⏳ ${esc(pacing)}</div>
+    ${items || '<div class="empty">No pouches logged today. 🌱</div>'}
+    <div class="btn-row" style="margin-top:10px"><button class="btn primary" data-action="craving-start">😮‍💨 I have an urge</button><button class="btn" data-action="pouch-log">${icon('plus')}Log pouch</button></div>
   </section>`;
 }
 
-function replacementsCard(plan) {
-  const emphasis = plan.phase.id === 'final' || plan.phase.id === 'free';
-  return `<section class="card">
-    ${cardHead('Mouth-replacement triggers', null, emphasis ? 'Your phase' : '')}
-    <ul class="bullets">
-      <li><b>Elaichi (cardamom)</b> — 1–2 pods, chew slowly.</li>
-      <li><b>Roasted saunf (fennel)</b> or <b>dhana dal</b> — a small pinch in place of a pouch.</li>
-      <li>Keep a tin in the same pocket where the pouches used to live.</li>
-      <li>Pair each urge with 200 ml water + a 2-minute walk.</li>
-    </ul>
-  </section>`;
-}
+const fmt1 = (v) => String(Math.round(v * 10) / 10);
 
 function alcoholCard(key, rec) {
   const s = getState().settings;
@@ -85,7 +86,7 @@ function alcoholCard(key, rec) {
   const last30 = rangeKeys(addDays(key, -29), key);
   const zero = last30.filter((k) => !(peekDay(k)?.drinks)).length;
   let zStreak = 0;
-  for (let k = key; zStreak < 365 && !(peekDay(k)?.drinks); k = addDays(k, -1)) zStreak++;
+  for (let k = key; k >= s.startDate && !(peekDay(k)?.drinks); k = addDays(k, -1)) zStreak++;
   const days = s.alcoholDays.map((d) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ') || 'none';
   return `<section class="card">
     ${cardHead('Alcohol guardrail', 'taper', plan.isAlcoholDay ? 'Designated day' : '')}
@@ -100,14 +101,64 @@ function alcoholCard(key, rec) {
   </section>`;
 }
 
-function statsCard() {
+function progressCard(plan) {
   const st = stats();
+  const p = taperProgress();
+  const s = getState().settings;
   const n = st.loggedDays || 1;
-  return `<div class="tiles">
-    <div class="tile"><div class="label">Pouches saved</div><div class="value">${st.saved}</div></div>
-    <div class="tile"><div class="label">Days under cap</div><div class="value">${st.underCap}<small> / ${st.loggedDays}</small></div></div>
-    <div class="tile"><div class="label">Morning lock kept</div><div class="value">${Math.round((st.lockKept / n) * 100)}<small>%</small></div></div>
-  </div>`;
+  const last = lastPouchEver();
+  const zeroIn = ZERO_DAY - plan.day;
+  const pct = (v) => `${Math.round(Math.abs(v) * 100)}%`;
+  return `<section class="card goal-card">
+    ${cardHead('Your taper so far', 'taper', plan.day >= 1 ? `Day ${Math.min(plan.day, PROGRAM_DAYS)}` : '')}
+    <div class="tiles">
+      <div class="tile"><div class="label">Avg / day (7 days)</div><div class="value">${p.weekAvg == null ? '—' : fmt1(p.weekAvg)}</div>
+        <div class="delta ${p.weekChange != null && p.weekChange <= 0 ? 'good' : p.weekChange > 0 ? 'bad' : ''}">${p.weekChange == null ? `was ${s.baseline}/day` : `${p.weekChange <= 0 ? '▼' : '▲'} ${pct(p.weekChange)} vs last week`}</div></div>
+      <div class="tile"><div class="label">Below your old ${s.baseline}/day</div><div class="value">${p.reduction == null ? '—' : `${Math.round(p.reduction * 100)}<small>%</small>`}</div></div>
+      <div class="tile"><div class="label">Under-cap streak</div><div class="value">${p.capStreak}<small> days</small></div></div>
+      <div class="tile"><div class="label">Pouch-free for</div><div class="value" style="font-size:22px">${last ? `<span data-since="${last}"></span>` : '—'}</div></div>
+      <div class="tile"><div class="label">Urges beaten</div><div class="value">${st.saved}</div></div>
+      <div class="tile"><div class="label">Morning lock kept</div><div class="value">${Math.round((st.lockKept / n) * 100)}<small>%</small></div></div>
+    </div>
+    <p class="small" style="margin-top:12px">${plan.day < 1 ? 'Your plan starts soon.' : zeroIn > 0 ? `🕊️ <b>${plural(zeroIn, 'day')}</b> to your pouch-free day (day ${ZERO_DAY}).` : '🕊️ You are in the pouch-free zone. Protect it.'}</p>
+  </section>`;
+}
+
+function triggersCard() {
+  const { total, list } = triggerStats(14);
+  if (!total) {
+    return `<section class="card">${cardHead('Your triggers', 'taper', 'Last 14 days')}
+      <div class="empty">Tag what set off each urge, in the urge buffer or when you log a pouch. Your top triggers and a plan for each show up here.</div></section>`;
+  }
+  const max = list[0].total;
+  const top = list[0];
+  return `<section class="card">
+    ${cardHead('Your triggers', 'taper', 'Last 14 days')}
+    <div class="trigger-bars">${list.map((t) => `<div class="tb"><span class="e" aria-hidden="true">${t.emoji}</span>
+      <div><b class="small">${esc(t.label)}</b><div class="bar"><span class="p" style="width:${(t.pouches / max) * 100}%"></span><span class="b" style="width:${(t.beaten / max) * 100}%"></span></div></div>
+      <span class="n">${t.pouches} 🌿 · ${t.beaten} 💪</span></div>`).join('')}</div>
+    <div class="legend" style="margin-top:10px"><span><i style="background:var(--s1)"></i>🌿 pouches taken</span><span><i style="background:var(--good)"></i>💪 urges beaten</span></div>
+    <div class="note" style="margin-top:12px"><b>${top.emoji} Plan for your #1 trigger (${Math.round(top.share * 100)}%):</b> ${esc(top.tip)}</div>
+  </section>`;
+}
+
+function sosCard(plan) {
+  const emphasis = plan.phase.id === 'final' || plan.phase.id === 'free';
+  return `<section class="card">
+    ${cardHead('Urge SOS toolkit', 'taper', emphasis ? 'Your phase' : '')}
+    <div class="sos">${SOS.map((x) => `<div><span aria-hidden="true">${x.emoji}</span>${esc(x.text)}</div>`).join('')}</div>
+    <p class="small muted" style="margin-top:10px">Keep a tin of elaichi, roasted saunf or dhana dal in the pocket where the pouches used to live.</p>
+    <button class="btn primary block" style="margin-top:12px" data-action="craving-start">😮‍💨 Start the 15-min buffer</button>
+  </section>`;
+}
+
+function expectCard(plan) {
+  const now = withdrawalFor(Math.max(1, plan.day));
+  return `<section class="card">
+    ${cardHead('What to expect', 'taper')}
+    <div class="timeline-list">${WITHDRAWAL.map((w) => `<div class="tl ${w === now ? 'now' : ''}"><b>${w === now ? '📍 ' : ''}${esc(w.title)}</b><span>${esc(w.text)}</span></div>`).join('')}</div>
+    <p class="tiny muted" style="margin-top:8px">General guidance. If withdrawal feels severe, or you notice chest pain or a racing heart, see a doctor.</p>
+  </section>`;
 }
 
 export function taperChart(host) {
@@ -148,14 +199,17 @@ export function render() {
   const rec = peekDay(key) || emptyDay();
   const plan = planFor(key);
   return `<div class="stack">
+    ${progressCard(plan)}
+    ${bufferCard(Date.now())}
+    ${logCard(key, rec)}
+    ${triggersCard()}
     ${phaseCard(plan)}
     <section class="card">${cardHead('Pouches vs cap', 'taper', programKeysSoFar().length ? '' : 'Starts on day 1')}
       <div class="legend"><span><i style="background:var(--s1)"></i>Pouches</span><span><i style="background:var(--bad)"></i>Over cap</span><span><i class="line" style="background:var(--ink-3)"></i>Daily cap</span></div>
       <div id="taper-chart"></div></section>
-    ${logCard(key, rec)}
+    ${sosCard(plan)}
+    ${expectCard(plan)}
     ${rulesCard(key, rec)}
-    ${statsCard()}
-    ${replacementsCard(plan)}
     ${alcoholCard(key, rec)}
   </div>`;
 }
