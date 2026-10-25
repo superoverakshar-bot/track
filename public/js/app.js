@@ -3,9 +3,10 @@ import { planFor, scoreFor } from './logic.js';
 import { badges } from './achievements.js';
 import { celebrate } from './joy.js';
 import { pouchFreeHours } from './taper.js';
-import { actions } from './actions.js';
+import { actions, autoFinishCraving } from './actions.js';
 import { initNotifications, scheduleLocal } from './notify.js';
-import { getState, subscribe, todayKey, update } from './store.js';
+import { getState, logEvent, noteOpen, subscribe, todayKey, update } from './store.js';
+import * as autopilot from './autopilot.js';
 import { esc, icon, longDate, mmss, since, toast, vibrate } from './ui.js';
 import * as today from './views/today.js';
 import * as coachView from './views/coach.js';
@@ -41,6 +42,23 @@ const ACTIONS = {
     render();
   },
 };
+// What a tap tells us about your routine. The autopilot learns your real times from these.
+const EVENT_KIND = {
+  wake: 'wake', 'craving-start': 'urge', 'craving-saved': 'urge_beaten', 'pouch-log': null,
+  'water-add': 'water', 'craving-water': 'water', 'drink-water': 'water', 'drink-add': 'drink',
+  'dinner-now': 'dinner', 'rep-add': 'reps', 'hold-start': 'hold', 'hold-add': 'hold', 'round-done': 'circuit',
+  'walk-start': 'walk_start', 'walk-end': 'walk_end', checkin: 'checkin', 'kegel-add': 'kegel',
+  toggle: (el) => ({ microManual: 'microset' })[el.dataset.field] || el.dataset.field,
+  check: (el) => ({ morning: 'morningWater' })[el.dataset.id] || el.dataset.id,
+};
+
+function noteActivity(name, el) {
+  if (!(name in EVENT_KIND)) return;
+  const kind = typeof EVENT_KIND[name] === 'function' ? EVENT_KIND[name](el) : EVENT_KIND[name];
+  update(() => logEvent(kind));
+  autopilot.poke();
+}
+
 const CHANGES = { ...taper.changes, ...fuel.changes, ...settings.changes, ...coachView.coachChanges };
 const SUBMITS = { ...move.submits, ...onboarding.submits };
 
@@ -177,6 +195,7 @@ function checkMilestones() {
 let rerenderQueued = false;
 function tick() {
   const now = Date.now();
+  if (getState().craving && autoFinishCraving(now)) return; // re-renders itself
   if (todayKey() !== renderedDay) {
     render();
     scheduleLocal();
@@ -322,6 +341,7 @@ async function onAction(e) {
   if (el.dataset.action === 'walk-start') unlockAudio();
   try {
     await fn(el, e);
+    noteActivity(el.dataset.action, el);
   } catch (err) {
     console.error(err);
     toast(err.message || 'Something went wrong');
@@ -339,6 +359,8 @@ root.addEventListener('submit', (e) => {
   if (!form) return;
   e.preventDefault();
   SUBMITS[form.dataset.submit]?.(form);
+  update(() => logEvent(null)); // a walk or waist log is new data too
+  autopilot.poke();
 });
 
 window.addEventListener('hashchange', render);
@@ -347,8 +369,14 @@ window.addEventListener('beforeinstallprompt', (e) => {
   installPrompt = e;
   render();
 });
+function opened() {
+  if (getState().settings.onboarded) update(() => noteOpen());
+  autopilot.poke(5000);
+}
+
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
+    opened();
     render();
     scheduleLocal();
   }
@@ -358,4 +386,4 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => appl
 subscribe(render);
 render();
 setInterval(tick, 1000);
-initNotifications().then(render); // server features (push, AI) known now
+initNotifications().then(() => { render(); opened(); }); // server features (push, AI) known now

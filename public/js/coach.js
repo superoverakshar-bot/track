@@ -2,11 +2,11 @@
 // Pure rules over local data — instant, private and offline. The optional AI
 // coach (/api/coach) builds on the same summary.
 import {
-  GAP_MIN, MORNING_LOCK_MIN, PROGRAM_DAYS, WALK_PHASES, ZERO_DAY, addDays, dailyCap, diffDays, dinnerCutoff, pad,
+  GAP_MIN, MORNING_LOCK_MIN, PROGRAM_DAYS, WALK_PHASES, ZERO_DAY, addDays, dailyCap, dayKeyAt, diffDays, dinnerCutoff, pad,
   timeToMin, tsForDayTime,
 } from './plan.js';
 import { checklist, cutoffTs, microSetDone, morningLockEnd, planFor, streak, totalReps, wakeTs } from './logic.js';
-import { resolveReminders } from './reminders.js';
+import { TUNABLE, formatTunable, resolveReminders, tunableValues } from './reminders.js';
 import { emptyDay, getState, peekDay, todayKey } from './store.js';
 import { fmtGap, nextWindow, triggerStats } from './taper.js';
 
@@ -54,6 +54,46 @@ function history(n) {
     const k = addDays(today, -i);
     const d = peekDay(k);
     if (d) out.push([k, d]);
+  }
+  return out;
+}
+
+// Event kinds whose first time each day says when you usually do that thing.
+const EVENT_TIMES = ['water', 'morningWater', 'microset', 'reps', 'sprouts', 'protein', 'snack', 'booster', 'walk_start', 'circuit', 'urge', 'checkin', 'hold', 'kegel'];
+
+// When you actually do things: the median time over the last n days, from your
+// taps, timers and logs. Counted from 04:00 so a 00:30 night stays after 23:00.
+export function typicalTimes({ includePrivate = false, n = 14 } = {}) {
+  const st = getState();
+  const today = todayKey();
+  const per = {};
+  const add = (kind, k, ts) => { (per[kind] ||= []).push((ts - tsForDayTime(k, '04:00')) / MIN); };
+  const opensByDay = {};
+  for (const ts of st.opens) (opensByDay[dayKeyAt(ts)] ||= []).push(ts);
+  const walksByDay = {};
+  for (const w of st.walks) if (w.ts) (walksByDay[w.date] ||= []).push(w);
+  for (let i = 0; i < n; i++) {
+    const k = addDays(today, -i);
+    const d = peekDay(k);
+    const opens = opensByDay[k] || [];
+    if (!d && !opens.length) continue;
+    const first = {};
+    for (const [ts, kind] of d?.events || []) if (!first[kind] || ts < first[kind]) first[kind] = ts;
+    for (const [kind, ts] of Object.entries(first)) if (EVENT_TIMES.includes(kind) && (includePrivate || kind !== 'kegel')) add(kind, k, ts);
+    if (!first.walk_start && walksByDay[k]) add('walk_start', k, walksByDay[k][0].ts - walksByDay[k][0].durationMin * MIN);
+    if (d?.wakeAt) add('wake_tap', k, d.wakeAt);
+    if (opens.length) add('first_open', k, Math.min(...opens));
+    const all = [...opens, ...(d?.events || []).map((e) => e[0]), ...(d?.pouches || []).map((p) => p.ts)];
+    if (i > 0 && all.length) add('last_activity', k, Math.max(...all)); // finished days only
+    if (d?.pouches.length) { add('first_pouch', k, firstTs(d)); add('last_pouch', k, lastTs(d)); }
+    if (d?.dinnerAt) add('dinner', k, d.dinnerAt);
+  }
+  const out = {};
+  for (const [kind, mins] of Object.entries(per)) {
+    if (mins.length < 2) continue;
+    const s = mins.sort((a, b) => a - b);
+    const mid = s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+    out[kind] = { time: hhmm(Math.round(mid) + 240), days: s.length };
   }
   return out;
 }
@@ -575,6 +615,11 @@ export function aiSummary({ includePrivate = false, now = Date.now() } = {}) {
       walk_mode: plan.walkMode, circuit_day: plan.isCircuitDay, alcohol_day: plan.isAlcoholDay,
     },
     schedule: { wake: s.wakeTime, bed: s.sleepTime, kitchen_closes: dinnerCutoff(s.sleepTime), walk: s.walkTime, water_target_l: s.waterTargetL },
+    tunable: tunableValues(s, { includePrivate }),
+    pinned: Object.entries(st.autopilot.pins).filter(([t, until]) => until > now && (includePrivate || !TUNABLE[t]?.private)).map(([t]) => t),
+    typical_times: typicalTimes({ includePrivate }),
+    recent_plan_changes: st.autopilot.log.filter((c) => includePrivate || !TUNABLE[c.target]?.private).slice(-6)
+      .map((c) => ({ when: clock(c.at), date: dayKeyAt(c.at), target: c.target, from: formatTunable(c.target, c.from), to: formatTunable(c.target, c.to), undone_by_user: !!c.undone })),
     today: dayRow(key, rec),
     last_14_days: history(14).map(([k, d]) => dayRow(k, d)),
     walks_recent: st.walks.slice(-8).map((w) => ({ date: w.date, km: w.distanceKm, min: w.durationMin, mode: w.mode, energy: w.energy })),

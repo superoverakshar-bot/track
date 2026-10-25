@@ -47,3 +47,36 @@ test('every key produces copy with a title, body and url', () => {
   assert.match(buildMessage('dinner', ctx, now).title, /20:30/);
   assert.ok(SCHEDULED_KEYS.length && ONCE_KEYS.every((k) => ALL_KEYS.includes(k)));
 });
+
+test('autopilot tweaks stay inside the limits', async () => {
+  const { planTweaks, tunableValues } = await import('../public/js/reminders.js');
+  const now = Date.UTC(2026, 9, 25, 10, 0);
+  const s = { ...settings, sleepTime: '23:00', walkTime: '07:30', waterTargetL: 3, focusAreas: ['quit'] };
+  const { changes, skipped } = planTweaks(s, [
+    { target: 'walkTime', value: '06:45', reason: 'walks start 06:43' }, // 45 min earlier: applied as is
+    { target: 'rem.shield', value: '18:30', reason: 'snack at 18:40' }, // outside 15:00–17:00: refused
+    { target: 'sleepTime', value: '00:30', reason: 'late nights' }, // across midnight, capped at 60 min → 00:00
+    { target: 'wakeTime', value: '06:35', reason: 'tiny' }, // 5 min: not worth it
+    { target: 'rem.kegel', value: '21:00', reason: 'private' },
+    { target: 'baseline', value: '30', reason: 'not allowed' },
+  ], { now });
+  assert.deepEqual(changes.map((c) => [c.target, c.from, c.to]), [['walkTime', '07:30', '06:45'], ['sleepTime', '23:00', '00:00']]);
+  assert.deepEqual(Object.fromEntries(skipped.map((x) => [x.target, x.why])), {
+    'rem.shield': 'out of range', wakeTime: 'too small', 'rem.kegel': 'private', baseline: 'unknown',
+  });
+
+  // Pinned settings, water capped at +0.5 L per run, and at most 3 changes.
+  const r2 = planTweaks(s, [
+    { target: 'walkTime', value: '08:00', reason: '' },
+    { target: 'waterTargetL', value: '3.75', reason: '' },
+    { target: 'waterTargetL', value: '4.5', reason: 'duplicate' },
+    { target: 'rem.water1', value: '10:30', reason: '' },
+    { target: 'rem.lunch', value: '12:15', reason: '' },
+    { target: 'rem.water2', value: '17:30', reason: '' },
+  ], { now, pins: { walkTime: now + 1000 } });
+  assert.deepEqual(r2.changes.map((c) => [c.target, c.to]), [['waterTargetL', 3.5], ['rem.water1', '10:30'], ['rem.lunch', '12:15']]);
+  assert.deepEqual(r2.skipped.map((x) => x.why), ['pinned', 'unknown', 'limit']);
+  assert.equal(planTweaks(s, [{ target: 'waterTargetL', value: '4.5' }], { now }).skipped[0].why, 'out of range');
+  assert.ok(!('rem.kegel' in tunableValues(s)));
+  assert.equal(tunableValues(s, { includePrivate: true })['rem.kegel'], '14:00');
+});

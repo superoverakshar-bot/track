@@ -6,6 +6,7 @@ export const DAY_ROLLOVER_HOUR = 4; // a "day" runs 04:00 → 03:59 so late nigh
 export const MORNING_LOCK_MIN = 90;
 export const GAP_MIN = 120;
 export const BUFFER_MIN = 15;
+export const AUTO_SAVE_MIN = 15; // a finished buffer with no pouch logged counts as beaten this long after
 export const BUFFER_WATER_ML = 200;
 export const DINNER_BUFFER_MIN = 150;
 export const WALK_MIN = 30;

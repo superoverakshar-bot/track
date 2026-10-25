@@ -1,14 +1,30 @@
 // User actions, wired to elements via data-action="name".
-import { BUFFER_MIN, BUFFER_WATER_ML, CIRCUIT_ROUND, GAP_MIN, MORNING_LOCK_MIN } from './plan.js';
+import { AUTO_SAVE_MIN, BUFFER_MIN, BUFFER_WATER_ML, CIRCUIT_ROUND, GAP_MIN, MORNING_LOCK_MIN, dayKeyAt } from './plan.js';
 import { FLAG_TEXT, bufferEnds, cravingState, planFor, pouchFlags } from './logic.js';
 import { TRIGGERS, nextWindow } from './taper.js';
 import { cancelOnce, scheduleOnce } from './notify.js';
-import { dayRecord, getState, todayKey, update } from './store.js';
+import { dayRecord, getState, logEvent, todayKey, update } from './store.js';
 import { clock, dialog, esc, toast } from './ui.js';
 import { celebrate } from './joy.js';
 
 const MIN = 60000;
 const clampAdd = (v, n) => Math.max(0, (v || 0) + n);
+
+// Forgot to tap "Urge passed"? With no pouch logged by AUTO_SAVE_MIN after the
+// buffer ended, the urge counts as beaten (logging a pouch clears the buffer).
+export function autoFinishCraving(now = Date.now()) {
+  const c = getState().craving;
+  if (!c || now < c.endsAt + AUTO_SAVE_MIN * MIN) return false;
+  update((s) => {
+    const d = dayRecord(dayKeyAt(c.endsAt));
+    d.saved += 1;
+    d.urges.push({ ts: c.endsAt, auto: true, ...(c.trigger ? { trigger: c.trigger } : {}) });
+    s.craving = null;
+    logEvent(null);
+  });
+  celebrate('Urge beaten! 💪 Counted for you, since no pouch was logged');
+  return true;
+}
 
 export function startCraving() {
   const now = Date.now();

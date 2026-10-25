@@ -49,6 +49,7 @@ export function emptyDay() {
     drinkWater: 0,
     checkin: null, // { energy: 1-5, focus: 1-5, sleepHrs }
     kegels: 0, // pelvic-floor sets
+    events: [], // [[ts, kind]] what you did and when; the autopilot learns your routine from it
   };
 }
 
@@ -70,6 +71,8 @@ function fresh() {
     badgesSeen: [], // achievement ids already celebrated
     perfectDay: null, // last day a 5/5 was celebrated
     freeMilestone: null, // { since, hours } pouch-free stretch last celebrated
+    opens: [], // app opens (ts), at most one per 20 min
+    autopilot: { on: true, runs: [], log: [], pins: {}, dirtyAt: null, spend: 0 }, // Astra plan tuning (see autopilot.js)
     notify: { enabled: false, push: false, endpoint: null, lastSync: 0, syncedHash: '', once: {} },
   };
 }
@@ -81,11 +84,21 @@ function normalize(raw) {
   const s = { ...base, ...raw };
   s.settings = { ...base.settings, ...(raw.settings || {}) };
   s.notify = { ...base.notify, ...(raw.notify || {}) };
+  const ap = raw.autopilot || {};
+  s.autopilot = {
+    ...base.autopilot,
+    ...ap,
+    runs: Array.isArray(ap.runs) ? ap.runs : [],
+    log: Array.isArray(ap.log) ? ap.log : [],
+    pins: ap.pins && typeof ap.pins === 'object' ? ap.pins : {},
+  };
+  s.opens = Array.isArray(raw.opens) ? raw.opens.filter(Number.isFinite) : [];
   s.days = {};
   for (const [k, d] of Object.entries(raw.days || {})) {
     if (!isValidKey(k)) continue;
     const day = { ...emptyDay(), ...d };
     day.reps = { ...emptyDay().reps, ...(d.reps || {}) };
+    if (!Array.isArray(day.events)) day.events = [];
     s.days[k] = day;
   }
   s.walks = Array.isArray(raw.walks) ? raw.walks.filter((w) => isValidKey(w?.date)) : [];
@@ -136,6 +149,25 @@ export function dayRecord(key = todayKey()) {
 
 // Read without creating.
 export const peekDay = (key) => state.days[key] || null;
+
+// Call inside update(): remember what you did and when, and flag new data for the autopilot.
+export function logEvent(kind, ts = Date.now()) {
+  if (kind) {
+    const ev = dayRecord(dayKeyAt(ts)).events;
+    ev.push([ts, kind]);
+    if (ev.length > 120) ev.splice(0, ev.length - 120);
+  }
+  state.autopilot.dirtyAt = ts;
+}
+
+// Call inside update(): note that the app was opened (for learning when your day starts and ends).
+export function noteOpen(ts = Date.now()) {
+  const o = state.opens;
+  if (o.length && ts - o[o.length - 1] < 20 * 60000) return false;
+  o.push(ts);
+  if (o.length > 300) o.splice(0, o.length - 300);
+  return true;
+}
 
 export function exportJson() {
   return JSON.stringify(state, null, 2);

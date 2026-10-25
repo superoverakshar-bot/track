@@ -2,7 +2,7 @@
 // and /api/push/deliver (Web Push), so both always say the same thing.
 import {
   BUFFER_MIN, GAP_MIN, MICRO_SET, WEEKDAYS, circuitRounds, dailyCap, dayKeyAt, dinnerCutoff,
-  isValidTime, phaseFor, programDay, shiftTime, walkModeFor, zonedParts, WALK_PHASES, PROGRAM_DAYS,
+  isValidTime, minToTime, phaseFor, programDay, shiftTime, timeToMin, walkModeFor, zonedParts, WALK_PHASES, PROGRAM_DAYS,
 } from './plan.js';
 
 // anchor: the time comes from a schedule setting (+ offset minutes); otherwise `time` is user-editable.
@@ -23,6 +23,94 @@ export const REMINDERS = [
   { key: 'waist', label: 'Weekly waist log', time: '08:30', days: 'waistDays' },
   { key: 'checkin', label: 'Evening check-in', anchor: 'sleepTime', offset: -60 },
 ];
+
+// Schedule settings the AI autopilot may move, with hard limits. Nothing here
+// touches the taper itself (caps, morning lock, gap rule, buffer).
+export const TUNABLE = {
+  wakeTime: { label: 'Wake time', min: '04:30', max: '10:30' },
+  sleepTime: { label: 'Bedtime', min: '20:30', max: '01:30' },
+  walkTime: { label: '30-min session', min: '05:00', max: '21:00' },
+  circuitTime: { label: 'Circuit time', min: '05:00', max: '21:30' },
+  waterTargetL: { label: 'Water target', number: true, min: 2.5, max: 4 },
+  'rem.water1': { label: 'Late-morning water reminder', min: '09:00', max: '13:00' },
+  'rem.lunch': { label: 'Sprouts reminder', min: '11:00', max: '14:30' },
+  'rem.taperCheck': { label: 'Afternoon taper check', min: '12:00', max: '19:00' },
+  'rem.shield': { label: 'Energy Shield reminder', min: '15:00', max: '17:00' },
+  'rem.water2': { label: 'Evening water reminder', min: '16:30', max: '20:00' },
+  'rem.kegel': { label: 'Pelvic-floor reminder', min: '08:00', max: '21:00', private: true },
+};
+export const TUNABLE_KEYS = Object.keys(TUNABLE);
+export const MAX_SHIFT_MIN = 60; // per change
+export const MIN_SHIFT_MIN = 10; // smaller moves aren't worth a change
+export const MAX_TWEAKS = 3; // per run
+
+const inWindow = (m, lo, hi) => (lo <= hi ? m >= lo && m <= hi : m >= lo || m <= hi);
+
+// Current value of a tunable setting.
+export function tunableValue(settings, target) {
+  if (!target.startsWith('rem.')) return settings[target];
+  return resolveReminders(settings).find((r) => r.key === target.slice(4))?.time;
+}
+
+// The tunable schedule as the AI sees it.
+export function tunableValues(settings, { includePrivate = false } = {}) {
+  const out = {};
+  for (const [target, t] of Object.entries(TUNABLE)) if (includePrivate || !t.private) out[target] = tunableValue(settings, target);
+  return out;
+}
+
+export function formatTunable(target, v) {
+  return TUNABLE[target]?.number ? `${v} L` : v;
+}
+
+// Check the AI's proposed tweaks against the limits. Out-of-range requests are
+// refused; in-range moves are capped at MAX_SHIFT_MIN (0.5 L for water) per run.
+// Returns the changes to make and the ones skipped, with why.
+export function planTweaks(settings, tweaks, { pins = {}, now = Date.now(), includePrivate = false } = {}) {
+  const changes = [];
+  const skipped = [];
+  const seen = new Set();
+  for (const tw of Array.isArray(tweaks) ? tweaks : []) {
+    const target = tw?.target;
+    const t = TUNABLE[target];
+    const skip = (why) => skipped.push({ target, why });
+    if (!t || seen.has(target)) { skip('unknown'); continue; }
+    seen.add(target);
+    if (t.private && !includePrivate) { skip('private'); continue; }
+    if ((pins[target] || 0) > now) { skip('pinned'); continue; }
+    if (changes.length >= MAX_TWEAKS) { skip('limit'); continue; }
+    const from = tunableValue(settings, target);
+    const reason = String(tw.reason || '').slice(0, 200);
+    if (t.number) {
+      const want = Number.parseFloat(tw.value);
+      if (!Number.isFinite(want)) { skip('invalid'); continue; }
+      if (want < t.min || want > t.max) { skip('out of range'); continue; }
+      const to = Math.round(Math.min(from + 0.5, Math.max(from - 0.5, want)) * 4) / 4;
+      if (Math.abs(to - from) < 0.25) { skip('too small'); continue; }
+      changes.push({ target, label: t.label, from, to, reason });
+      continue;
+    }
+    if (!isValidTime(tw.value) || !isValidTime(from)) { skip('invalid'); continue; }
+    const [lo, hi] = [timeToMin(t.min), timeToMin(t.max)];
+    if (!inWindow(timeToMin(tw.value), lo, hi)) { skip('out of range'); continue; }
+    const a = timeToMin(from);
+    const diff = ((timeToMin(tw.value) - a + 720 + 1440) % 1440) - 720; // shortest way round the clock
+    if (Math.abs(diff) < MIN_SHIFT_MIN) { skip('too small'); continue; }
+    const to = minToTime(a + Math.sign(diff) * Math.min(Math.abs(diff), MAX_SHIFT_MIN));
+    if (!inWindow(timeToMin(to), lo, hi)) { skip('out of range'); continue; }
+    changes.push({ target, label: t.label, from, to, reason });
+  }
+  return { changes, skipped };
+}
+
+// Write one change into settings (mutates).
+export function setTunable(settings, target, value) {
+  if (!target.startsWith('rem.')) settings[target] = value;
+  else {
+    const key = target.slice(4);
+    settings.reminders = { ...settings.reminders, [key]: { ...settings.reminders?.[key], time: value } };
+  }
+}
 
 export const SCHEDULED_KEYS = REMINDERS.map((r) => r.key);
 export const ONCE_KEYS = ['craving', 'lockEnd', 'gap'];

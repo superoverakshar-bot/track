@@ -1,8 +1,8 @@
 // Render fragments shared by several screens.
-import { BUFFER_MIN, BUFFER_WATER_ML, MICRO_SET, WALK_PHASES, paceText } from '../plan.js';
+import { AUTO_SAVE_MIN, BUFFER_MIN, BUFFER_WATER_ML, MICRO_SET, WALK_PHASES, paceText } from '../plan.js';
 import { checklist, cravingState, microSetDone, streak } from '../logic.js';
 import { getState } from '../store.js';
-import { esc, icon, mmss, plural } from '../ui.js';
+import { clock, esc, icon, mmss, plural } from '../ui.js';
 import { PILLAR_EMOJI } from '../joy.js';
 import { TRIGGERS, triggerById } from '../taper.js';
 
@@ -37,6 +37,7 @@ export function cravingBlock(now) {
   return `<div class="buffer done">
     <div><b>You made it through 15 minutes 🎉</b> <span class="muted">Still want it? Be honest; both answers help.</span></div>
     ${c.water ? '' : water}
+    <p class="tiny muted">If you don't log a pouch, this counts as beaten automatically at ${clock(c.endsAt + AUTO_SAVE_MIN * 60000)}.</p>
     <div class="btn-row"><button class="btn good" data-action="craving-saved">${icon('check')}Urge passed — saved</button>
     <button class="btn" data-action="pouch-log">Log pouch</button></div></div>`;
 }

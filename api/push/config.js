@@ -1,5 +1,5 @@
 // GET /api/push/config — tells the app which server features are available.
-import { aiConfigured, aiModel, json, missingEnv } from '../../lib/server.js';
+import { aiConfigured, aiModel, aiReviewModel, json, missingEnv } from '../../lib/server.js';
 
 export default {
   fetch() {
@@ -10,6 +10,7 @@ export default {
       needsCode: Boolean(process.env.PUSH_ACCESS_CODE),
       ai: aiConfigured(),
       aiModel: aiConfigured() ? aiModel() : null,
+      aiReviewModel: aiConfigured() ? aiReviewModel() : null,
       missing,
     });
   },

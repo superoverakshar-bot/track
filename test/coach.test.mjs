@@ -89,3 +89,36 @@ test('AI summary leaves private data out unless allowed', () => {
   assert.equal(full.vitality.stamina_logs[0].seconds, 20);
   assert.ok(JSON.stringify(full).length < 20000);
 });
+
+test('learns typical times from taps and timers for the autopilot', async () => {
+  const { typicalTimes } = await import('../public/js/coach.js');
+  update((s) => {
+    for (let i = 1; i <= 4; i++) {
+      const k = addDays(today, -i);
+      s.days[k].events = [[at(k, '06:40'), 'walk_start'], [at(k, '06:45'), 'walk_start'], [at(k, i % 2 ? '16:20' : '16:40'), 'snack'], [at(k, '07:10'), 'kegel']];
+      s.days[k].wakeAt = at(k, '07:00');
+      s.opens.push(at(k, '06:55'), at(k, '00:30')); // 00:30 is the late end of that tracking day
+    }
+    s.opens.sort((a, b) => a - b);
+    s.autopilot.pins = { walkTime: Date.now() + 1000, 'rem.kegel': Date.now() + 1000 };
+    s.autopilot.log = [
+      { id: 'a', at: Date.now(), target: 'rem.water1', label: 'x', from: '11:00', to: '10:40', reason: '', undone: true },
+      { id: 'b', at: Date.now(), target: 'rem.kegel', label: 'x', from: '14:00', to: '13:30', reason: '' },
+    ];
+  });
+  const t = typicalTimes();
+  assert.deepEqual(t.walk_start, { time: '06:40', days: 4 }); // first event each day
+  assert.deepEqual(t.snack, { time: '16:30', days: 4 });
+  assert.deepEqual(t.wake_tap, { time: '07:00', days: 5 }); // 4 seeded + today's 06:30 from the pacing test
+  assert.deepEqual(typicalTimes({ n: 3 }).last_activity, { time: '00:30', days: 2 }); // yesterday and the day before, past midnight
+  assert.equal(t.kegel, undefined); // private unless allowed
+  assert.equal(typicalTimes({ includePrivate: true }).kegel.days, 4);
+
+  const sum = aiSummary();
+  assert.equal(sum.tunable.walkTime, getState().settings.walkTime);
+  assert.ok(!('rem.kegel' in sum.tunable));
+  assert.deepEqual(sum.pinned, ['walkTime']);
+  assert.deepEqual(sum.recent_plan_changes.map((c) => [c.target, c.undone_by_user]), [['rem.water1', true]]);
+  assert.equal(sum.typical_times.snack.time, '16:30');
+  assert.deepEqual(aiSummary({ includePrivate: true }).pinned, ['walkTime', 'rem.kegel']);
+});

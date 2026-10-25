@@ -1,4 +1,5 @@
-import { PROGRAM_DAYS } from '../plan.js';
+import { PROGRAM_DAYS, dayKeyAt } from '../plan.js';
+import { TUNABLE } from '../reminders.js';
 import { avoidedPouches, coach } from '../coach.js';
 import { lineOfTheDay, partOfDay } from '../joy.js';
 import { gapEnd, morningLockEnd, planFor } from '../logic.js';
@@ -6,7 +7,7 @@ import { nextWindow, taperProgress } from '../taper.js';
 import { mode as notifyMode } from '../notify.js';
 import { emptyDay, getState, peekDay, todayKey } from '../store.js';
 import { clock, esc, icon } from '../ui.js';
-import { suggestionRow, visibleSuggestions } from './coach.js';
+import { changeRow, suggestionRow, visibleSuggestions } from './coach.js';
 import { bufferCard, cardHead, checklistCard, microProgress, walkPhaseLine, walkSummary, waterCard } from './parts.js';
 
 // What the taper says right now, with a time to count down to.
@@ -78,6 +79,27 @@ function smartCard() {
   </section>`;
 }
 
+// Private stamina topics must never reach the Today screen.
+const PRIVATE_WORDS = /pelvic|kegel|ejaculat|bedroom|sexual|\bsex\b|intima|stamina log|vitality/i;
+const safe = (...texts) => !texts.some((t) => PRIVATE_WORDS.test(t || ''));
+
+// The latest AI plan for today, plus what the autopilot moved. If the plan saw
+// private data, anything that mentions it is left for the Coach tab.
+function planCard(key) {
+  const st = getState();
+  const ai = st.ai;
+  const changes = st.autopilot.log.filter((c) => !TUNABLE[c.target]?.private && dayKeyAt(c.at) === key);
+  if ((!ai?.result || ai.day !== key) && !changes.length) return '';
+  const r = ai?.day === key ? ai.result : null;
+  const acts = (r?.actions || []).filter((a) => a.pillar !== 'vitality' && safe(a.title, a.detail, a.when)).slice(0, 3);
+  return `<section class="card plan-today">
+    ${cardHead('Your plan today', null, `<a class="small" href="#coach">${ai?.auto ? '🤖 Autopilot' : 'Coach'} →</a>`)}
+    ${r && safe(r.headline) ? `<p class="ai-headline">${esc(r.headline)}</p>` : ''}
+    ${acts.length ? `<ol class="ai-actions">${acts.map((a) => `<li><b>${esc(a.title)}</b>${a.when ? ` <span class="badge">${esc(a.when)}</span>` : ''}<span>${esc(a.detail)}</span></li>`).join('')}</ol>` : ''}
+    ${changes.length ? `<h3 class="small" style="margin-top:12px">🤖 Moved today</h3><ul class="changes">${changes.slice(-3).reverse().map((c) => changeRow(c, { compact: true })).join('')}</ul>` : ''}
+  </section>`;
+}
+
 function moveCard(key, rec) {
   const plan = planFor(key);
   const walk = getState().walks.filter((w) => w.date === key).pop();
@@ -117,6 +139,7 @@ export function render() {
     ${heroCard(key, rec, now)}
     ${bufferCard(now)}
     ${smartCard()}
+    ${planCard(key)}
     ${checklistCard(key, rec)}
     ${waterCard(rec, true)}
     ${moveCard(key, rec)}

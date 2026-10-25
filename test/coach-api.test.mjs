@@ -11,9 +11,10 @@ const plan = {
   actions: [{ title: 'Shield at 15:45', detail: 'Chana before the peak.', when: '15:45', pillar: 'fuel' }],
   watch_outs: [],
   encouragement: 'Under cap 3 days running.',
+  tweaks: [],
 };
-const completion = (content, finish = 'stop') => new Response(JSON.stringify({
-  model: 'google/gemini-3.8-flash', choices: [{ finish_reason: finish, message: { role: 'assistant', content } }],
+const completion = (content, finish = 'stop', model = 'google/gemini-3.8-flash', cost = 0.004) => new Response(JSON.stringify({
+  model, choices: [{ finish_reason: finish, message: { role: 'assistant', content } }], usage: { cost },
 }), { status: 200, headers: { 'content-type': 'application/json' } });
 const apiError = (status, message) => new Response(JSON.stringify({ error: { code: status, message } }), { status });
 
@@ -32,6 +33,7 @@ beforeEach(() => {
   calls = [];
   process.env.OPENROUTER_API_KEY = 'sk-or-test';
   delete process.env.OPENROUTER_MODEL;
+  delete process.env.OPENROUTER_REVIEW_MODEL;
   respond = () => completion(JSON.stringify(plan));
 });
 
@@ -66,8 +68,68 @@ test('asks Gemini 3.8 Flash on OpenRouter for a schema-checked plan', async () =
   assert.match(body.messages[1].content, /"cap":15/);
   assert.equal(body.response_format.type, 'json_schema');
   assert.equal(body.response_format.json_schema.strict, true);
-  assert.deepEqual(body.response_format.json_schema.schema.required, ['headline', 'actions', 'watch_outs', 'encouragement']);
+  assert.deepEqual(body.response_format.json_schema.schema.required, ['headline', 'actions', 'watch_outs', 'encouragement', 'tweaks']);
   assert.equal(body.provider.require_parameters, true);
+  assert.deepEqual(body.usage, { include: true });
+  assert.equal(calls.length, 1); // no tweaks proposed, so no second check
+  assert.equal(data.cost, 0.004);
+  assert.equal(data.result.review, null);
+});
+
+test('a second model confirms, adjusts or rejects each schedule tweak', async () => {
+  const proposed = [
+    { target: 'walkTime', value: '06:45', reason: 'Walks start 06:43.' },
+    { target: 'rem.shield', value: '4 PM', reason: 'bad format' },
+    { target: 'rem.water1', value: '10:30', reason: 'First water 10:45.' },
+    { target: 'sleepTime', value: '22:30', reason: 'Check-in 22:17.' },
+  ];
+  const verdicts = [
+    { target: 'walkTime', decision: 'confirm', value: '06:45', reason: 'Matches 14 days.' },
+    { target: 'rem.water1', decision: 'adjust', value: '10:40', reason: 'Closer to first water.' },
+    { target: 'sleepTime', decision: 'reject', value: '22:30', reason: 'Only 2 days of data.' },
+  ];
+  respond = () => (calls.length === 1
+    ? completion(JSON.stringify({ ...plan, tweaks: proposed }))
+    : completion(JSON.stringify({ verdicts }), 'stop', 'openai/gpt-6-sol', 0.003));
+  const { default: coach } = await import('../api/coach.js');
+  const data = await (await coach.fetch(post({ summary: { ...summary, tunable: { walkTime: '07:30' } }, mode: 'auto' }))).json();
+
+  assert.equal(calls.length, 2);
+  assert.match(calls[0].body.messages[1].content, /Autopilot check-in/);
+  const review = calls[1].body;
+  assert.equal(review.model, 'openai/gpt-6-sol');
+  assert.equal(review.response_format.json_schema.name, 'tweak_review');
+  const sent = JSON.parse(review.messages[1].content.split('\n').slice(1).join('\n'));
+  assert.deepEqual(sent.proposed.map((t) => t.target), ['walkTime', 'rem.water1', 'sleepTime']); // badly formatted one dropped
+  assert.equal(sent.tunable.walkTime, '07:30');
+  assert.deepEqual(sent.limits['rem.shield'], { min: '15:00', max: '17:00' });
+
+  assert.deepEqual(data.result.tweaks.map((t) => [t.target, t.value]), [['walkTime', '06:45'], ['rem.water1', '10:40']]);
+  assert.equal(data.result.review.model, 'openai/gpt-6-sol');
+  assert.equal(data.result.review.confirmed, 1);
+  assert.equal(data.result.review.adjusted, 1);
+  assert.deepEqual(data.result.review.rejected.map((x) => [x.target, x.reason]), [['sleepTime', 'Only 2 days of data.']]);
+  assert.equal(data.cost, 0.007);
+  assert.equal(data.reviewModel, 'openai/gpt-6-sol');
+});
+
+test('no second opinion means no changes; review can be switched off', async () => {
+  const tweaks = [{ target: 'walkTime', value: '06:45', reason: 'Walks start 06:43.' }];
+  const { default: coach } = await import('../api/coach.js');
+  respond = () => (calls.length === 1 ? completion(JSON.stringify({ ...plan, tweaks })) : apiError(429, 'busy'));
+  let data = await (await coach.fetch(post({ summary }))).json();
+  assert.equal(data.result.headline, plan.headline); // the plan still arrives
+  assert.deepEqual(data.result.tweaks, []);
+  assert.match(data.result.review.error, /no schedule changes/);
+
+  calls = [];
+  process.env.OPENROUTER_REVIEW_MODEL = 'off';
+  respond = () => completion(JSON.stringify({ ...plan, tweaks }));
+  data = await (await coach.fetch(post({ summary }))).json();
+  assert.equal(calls.length, 1);
+  assert.deepEqual(data.result.tweaks, tweaks);
+  const { default: config } = await import('../api/push/config.js');
+  assert.equal((await (await config.fetch(new Request('https://track.test/api/push/config'))).json()).aiReviewModel, null);
 });
 
 test('OPENROUTER_MODEL overrides the model', async () => {

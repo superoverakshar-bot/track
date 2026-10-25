@@ -1,7 +1,8 @@
-import { ZERO_DAY, addDays, capSteps } from '../plan.js';
-import { FOCUS_AREAS, KEGEL_SETS, STAMINA_CHOICES, aiSummary, avoidedPouches, coach, cravingHours, fmtDur } from '../coach.js';
+import { ZERO_DAY, addDays, capSteps, dayKeyAt } from '../plan.js';
+import { FOCUS_AREAS, KEGEL_SETS, STAMINA_CHOICES, avoidedPouches, coach, cravingHours, fmtDur } from '../coach.js';
 import { timeChart } from '../charts.js';
-import { postJson } from '../api.js';
+import { AUTO_RUNS_PER_DAY, isBusy, runCoach, setOn, statusText, undoChange } from '../autopilot.js';
+import { TUNABLE, formatTunable } from '../reminders.js';
 import { getConfig, mode as notifyMode } from '../notify.js';
 import { dayRecord, emptyDay, getState, peekDay, todayKey, update } from '../store.js';
 import { esc, icon, longDate, shortDate, toast } from '../ui.js';
@@ -10,13 +11,21 @@ import { cardHead } from './parts.js';
 
 const PILLAR_TINT = { taper: 'taper', move: 'move', strength: 'strength', fuel: 'fuel', vitality: 'strength', sleep: 'move', focus: 'move', energy: 'fuel' };
 const LEVELS = ['', 'Very low', 'Low', 'OK', 'Good', 'Great'];
-let aiBusy = false;
 
-// "google/gemini-3.8-flash" → "Gemini 3.8 Flash"
-function modelName(id) {
+// "google/gemini-3.8-flash" → "Gemini 3.8 Flash", "openai/gpt-6-sol" → "GPT-6 Sol"
+export function modelName(id) {
   if (!id) return 'AI';
-  return id.split('/').pop().split(':')[0].split('-')
-    .map((w) => (/^\d/.test(w) ? w : w[0].toUpperCase() + w.slice(1))).join(' ');
+  const words = id.split('/').pop().split(':')[0].split('-');
+  if (words[0].toLowerCase() === 'gpt' && words.length > 1) words.splice(0, 2, `GPT-${words[1]}`);
+  return words.map((w) => (/^(\d|GPT-)/.test(w) ? w : w[0].toUpperCase() + w.slice(1))).join(' ');
+}
+
+const clockOf = (ts) => new Date(ts).toTimeString().slice(0, 5);
+
+export function changeRow(c, { compact = false } = {}) {
+  const what = `${esc(c.label)} ${esc(String(formatTunable(c.target, c.from)))} → <b>${esc(String(formatTunable(c.target, c.to)))}</b>`;
+  const undo = c.undone ? '<span class="badge">Undone</span>' : `<button class="btn sm ghost" data-action="ap-undo" data-id="${esc(c.id)}">Undo</button>`;
+  return `<li class="${c.undone ? 'undone' : ''}"><div><span>${what}</span>${compact ? '' : `<span class="small muted">${esc(c.reason)}</span><span class="tiny muted">${shortDate(dayKeyAt(c.at))} ${clockOf(c.at)} · ${c.auto ? 'autopilot' : 'when you asked'}</span>`}</div>${undo}</li>`;
 }
 
 function actionButton(a, cls = 'btn sm') {
@@ -144,32 +153,56 @@ function vitalityCard(rec, res) {
   </section>`;
 }
 
+function reviewLine(r) {
+  const rv = r.review;
+  if (!rv) return '';
+  if (rv.error) return `<p class="tiny muted" style="margin-top:8px">🔎 ${esc(rv.error)}</p>`;
+  const rej = rv.rejected || [];
+  const parts = [`${rv.confirmed} confirmed`, rv.adjusted ? `${rv.adjusted} adjusted` : '', rej.length ? `${rej.length} rejected` : ''].filter(Boolean).join(', ');
+  return `<details class="review"><summary class="tiny muted">🔎 Double-checked by ${esc(modelName(rv.model))}: ${esc(parts)}</summary>
+    ${rej.length ? `<ul class="bullets tiny">${rej.map((x) => `<li><b>${esc(TUNABLE[x.target]?.label || x.target)} → ${esc(String(x.value))}</b> not applied: ${esc(x.reason)}</li>`).join('')}</ul>` : ''}</details>`;
+}
+
 function aiCard() {
   const st = getState();
   const cfg = getConfig() || {};
   const ai = st.ai;
+  const ap = st.autopilot;
   const stamina = st.settings.focusAreas.includes('stamina');
   if (!cfg.ai) {
     return `<section class="card">
-      ${cardHead('AI coach', null, '<span class="badge">Not set up</span>')}
-      <p class="small muted">${cfg.unreachable ? 'Needs the online server; this works on your Vercel deployment.' : 'Add an <code>OPENROUTER_API_KEY</code> in Vercel to get a personalised AI plan (Gemini 3.8 Flash) and ask questions about your data. The built-in coach above already works without it.'}</p>
+      ${cardHead('AI coach & autopilot', null, '<span class="badge">Not set up</span>')}
+      <p class="small muted">${cfg.unreachable ? 'Needs the online server; this works on your Vercel deployment.' : 'Add an <code>OPENROUTER_API_KEY</code> in Vercel to get a personalised AI plan and an autopilot that moves your reminders to when you really do things. The built-in coach above already works without it.'}</p>
     </section>`;
   }
+  const busy = isBusy();
   const r = ai?.result;
+  const showPrivate = stamina && st.settings.aiPrivate;
+  const changes = ap.log.filter((c) => showPrivate || !TUNABLE[c.target]?.private).slice(-6).reverse();
+  const planner = modelName(cfg.aiModel);
+  const reviewer = cfg.aiReviewModel ? modelName(cfg.aiReviewModel) : null;
   return `<section class="card" id="ai">
-    ${cardHead('AI coach', null, `<span class="badge info">${esc(modelName(cfg.aiModel))}</span>`)}
-    <p class="small muted">Reads a summary of your last 14 days and writes a plan for the next 24 hours, or answers your question.</p>
-    <label class="field" style="margin-top:10px"><span class="sr-only">Ask a question</span>
+    ${cardHead('AI coach & autopilot', null, `<span class="badge info">${esc(planner)}${reviewer ? ` + ${esc(reviewer)}` : ''}</span>`)}
+    <div class="autopilot">
+      <div class="row ap-head"><div class="grow"><b>🤖 Autopilot</b><span class="small muted">After you log something or use a timer, ${esc(planner)} re-plans your day and moves reminders to when you really do things.${reviewer ? ` ${esc(reviewer)} double-checks every change first.` : ''} Up to ${AUTO_RUNS_PER_DAY} times a day.</span></div>
+        <label class="switch"><input type="checkbox" data-change="ap-on" aria-label="Autopilot" ${ap.on ? 'checked' : ''}><span></span></label></div>
+      <p class="small ap-status">${busy ? '⏳ Planning…' : esc(statusText())}</p>
+      ${changes.length ? `<h3 class="small" style="margin-top:10px">Recent changes</h3><ul class="changes">${changes.map((c) => changeRow(c)).join('')}</ul>` : ''}
+      <p class="tiny muted" style="margin-top:8px">AI cost so far on this device: $${(ap.spend || 0).toFixed(3)}. Times you set yourself in Settings, and changes you undo, are left alone for 7 days.</p>
+    </div>
+    <hr class="divider">
+    <label class="field"><span class="small" style="font-weight:800">Ask the coach</span>
       <input class="input" id="ai-q" type="text" maxlength="500" placeholder="Optional: e.g. why am I tired at 3 PM?" autocomplete="off"></label>
     ${stamina ? `<label class="row small" style="margin-top:10px"><input type="checkbox" data-change="ai-private" ${st.settings.aiPrivate ? 'checked' : ''}> Include private stamina data</label>` : ''}
-    <button class="btn primary block" style="margin-top:12px" data-action="ai-ask" ${aiBusy ? 'disabled' : ''}>${aiBusy ? 'Thinking… (up to a minute)' : `${icon('flame')}Get my AI plan`}</button>
-    <p class="tiny muted" style="margin-top:6px">Sends numbers only (no name or contact details) to ${esc(modelName(cfg.aiModel))} through OpenRouter, via your server.</p>
+    <button class="btn primary block" style="margin-top:12px" data-action="ai-ask" ${busy ? 'disabled' : ''}>${busy ? 'Thinking… (up to a minute)' : `${icon('flame')}Plan my next 24 hours`}</button>
+    <p class="tiny muted" style="margin-top:6px">Sends numbers and times only (no name or contact details) through OpenRouter, via your server.</p>
     ${r ? `<div class="ai-result">
-      ${ai.question ? `<p class="small muted">You asked: “${esc(ai.question)}”</p>` : ''}
+      ${ai.question ? `<p class="small muted">You asked: “${esc(ai.question)}”</p>` : ai.auto ? '<p class="small muted">🤖 From the autopilot</p>' : ''}
       <p class="ai-headline">${esc(r.headline)}</p>
       <ol class="ai-actions">${(r.actions || []).map((a) => `<li><b>${esc(a.title)}</b>${a.when ? ` <span class="badge">${esc(a.when)}</span>` : ''}<span>${esc(a.detail)}</span></li>`).join('')}</ol>
       ${(r.watch_outs || []).length ? `<div class="note"><b>Watch out</b><ul class="bullets">${r.watch_outs.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>` : ''}
       ${r.encouragement ? `<p class="small" style="margin-top:10px">${esc(r.encouragement)}</p>` : ''}
+      ${reviewLine(r)}
       <p class="tiny muted" style="margin-top:8px">${esc(new Date(ai.at).toLocaleString())}${ai.day !== todayKey() ? ' · from an earlier day' : ''}</p>
     </div>` : ''}
   </section>`;
@@ -265,24 +298,20 @@ export const coachActions = {
     s.dismissed = { day: d.day, ids: [...new Set([...d.ids, el.dataset.id])] };
   }),
   'ai-ask': async () => {
-    const st = getState();
     const question = document.getElementById('ai-q')?.value.trim() || '';
-    const includePrivate = st.settings.aiPrivate && st.settings.focusAreas.includes('stamina');
-    aiBusy = true;
-    update(() => {});
     try {
-      const data = await postJson('/api/coach', { summary: aiSummary({ includePrivate }), question });
-      update((s) => { s.ai = { at: Date.now(), day: todayKey(), question, result: data.result }; });
+      await runCoach({ question });
       document.getElementById('ai')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
     } catch (err) {
       toast(err.message);
-    } finally {
-      aiBusy = false;
-      update(() => {});
     }
+  },
+  'ap-undo': (el) => {
+    toast(undoChange(el.dataset.id) ? 'Change undone. Autopilot will leave it alone for 7 days.' : 'Marked as undone. You had already changed it.');
   },
 };
 
 export const coachChanges = {
   'ai-private': (el) => update((s) => { s.settings.aiPrivate = el.checked; }),
+  'ap-on': (el) => setOn(el.checked),
 };

@@ -1,5 +1,6 @@
 import { WEEKDAYS, capSteps, dinnerCutoff, isValidKey, isValidTime } from '../plan.js';
-import { resolveReminders } from '../reminders.js';
+import { TUNABLE, resolveReminders } from '../reminders.js';
+import { pin } from '../autopilot.js';
 import {
   disableNotifications, enableNotifications, getConfig, mode, permission, sendTest, settingsChanged, support, syncPush,
 } from '../notify.js';
@@ -93,6 +94,8 @@ function notifySection(s) {
     ? `<div class="banner info" style="margin-top:12px">${icon('share')}<div class="grow"><b>iPhone / iPad</b><span class="small">Tap Share → <b>Add to Home Screen</b>, open Track from the icon, then enable notifications here.</span></div></div>` : '';
   const blocked = perm === 'denied' ? `<p class="small" style="margin-top:8px"><span class="badge bad">${icon('alert')}Blocked in browser settings</span></p>` : '';
   const rems = resolveReminders(s);
+  // Reminder times the autopilot set and you haven't changed since.
+  const tuned = new Set(getState().autopilot.log.filter((c) => !c.undone && c.target.startsWith('rem.') && rems.find((r) => `rem.${r.key}` === c.target)?.time === c.to).map((c) => c.target.slice(4)));
   return `<section class="card" id="notifications">
     ${cardHead('Notifications', null, `<span class="badge ${status[1]}">${status[0]}</span>`)}
     <p class="small muted">${status[2]}</p>
@@ -108,12 +111,12 @@ function notifySection(s) {
     </div>
     <h3 class="small" style="margin:16px 0 4px">Reminders</h3>
     <div class="list-rows">
-      ${rems.map((r) => `<div class="list-row"><div class="grow"><b>${esc(r.label)}</b>
+      ${rems.map((r) => `<div class="list-row"><div class="grow"><b>${esc(r.label)}${tuned.has(r.key) ? ' <span class="badge info" title="Set by the autopilot">🤖</span>' : ''}</b>
         <span>${r.days ? (r.days.length ? r.days.map((d) => WEEKDAYS[d]).join(', ') : 'No days selected') : 'Every day'}${r.editable ? '' : ` · ${r.time} (${anchorNote[r.key]})`}</span></div>
         ${r.editable ? `<input class="input" type="time" id="rem-time-${r.key}" data-change="rem-time" data-key="${r.key}" value="${r.time}" aria-label="${esc(r.label)} time">` : ''}
         <label class="switch"><input type="checkbox" id="rem-on-${r.key}" data-change="rem-on" data-key="${r.key}" ${r.on ? 'checked' : ''} aria-label="${esc(r.label)}"><span></span></label></div>`).join('')}
     </div>
-    <p class="tiny muted" style="margin-top:8px">Plus automatic one-off alerts: craving buffer done, morning lock over, 2-hour gap over.</p>
+    <p class="tiny muted" style="margin-top:8px">Plus automatic one-off alerts: craving buffer done, morning lock over, 2-hour gap over. 🤖 marks times the autopilot set; any time you change yourself is left alone for 7 days.</p>
   </section>`;
 }
 
@@ -167,7 +170,10 @@ export const changes = {
     } else if (el.type === 'time' && !isValidTime(v)) return;
     else if (el.type === 'date' && !isValidKey(v)) return;
     else if (key === 'why') v = v.trim().slice(0, 140);
-    update((s) => { s.settings[key] = v; });
+    update((s) => {
+      s.settings[key] = v;
+      if (TUNABLE[key]) pin(s, key); // your choice: the autopilot leaves it alone for a week
+    });
     changed();
   },
   'rem-on': (el) => {
@@ -176,7 +182,10 @@ export const changes = {
   },
   'rem-time': (el) => {
     if (!isValidTime(el.value)) return;
-    update((s) => { s.settings.reminders[el.dataset.key] = { ...s.settings.reminders[el.dataset.key], time: el.value }; });
+    update((s) => {
+      s.settings.reminders[el.dataset.key] = { ...s.settings.reminders[el.dataset.key], time: el.value };
+      if (TUNABLE[`rem.${el.dataset.key}`]) pin(s, `rem.${el.dataset.key}`);
+    });
     changed();
   },
   import: async (el) => {
