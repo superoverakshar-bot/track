@@ -5,9 +5,10 @@ import { postJson } from '../api.js';
 import { getConfig, mode as notifyMode } from '../notify.js';
 import { dayRecord, emptyDay, getState, peekDay, todayKey, update } from '../store.js';
 import { esc, icon, longDate, shortDate, toast } from '../ui.js';
+import { PILLAR_EMOJI, celebrate } from '../joy.js';
 import { cardHead } from './parts.js';
 
-const PILLAR_COLOR = { taper: 'taper', move: 'move', strength: 'strength', fuel: 'fuel', vitality: 'strength', sleep: 'move', focus: 'move', energy: 'fuel', general: null };
+const PILLAR_TINT = { taper: 'taper', move: 'move', strength: 'strength', fuel: 'fuel', vitality: 'strength', sleep: 'move', focus: 'move', energy: 'fuel' };
 const LEVELS = ['', 'Very low', 'Low', 'OK', 'Good', 'Great'];
 let aiBusy = false;
 
@@ -35,9 +36,8 @@ export function visibleSuggestions(res) {
 }
 
 export function suggestionRow(x, { dismissable = false } = {}) {
-  const color = PILLAR_COLOR[x.pillar];
   return `<div class="tip">
-    <span class="pillar-dot" style="background:${color ? `var(--p-${color})` : 'var(--ink-3)'}"></span>
+    <span class="bubble ${PILLAR_TINT[x.pillar] || 'spark'}" aria-hidden="true">${PILLAR_EMOJI[x.pillar] || '✨'}</span>
     <div class="grow"><b>${esc(x.title)}</b><span>${esc(x.body)}</span>
       ${x.action ? `<div style="margin-top:8px">${actionButton(x.action)}</div>` : ''}</div>
     ${dismissable ? `<button class="del" data-action="dismiss" data-id="${esc(x.id)}" aria-label="Hide for today">${icon('x')}</button>` : ''}
@@ -50,7 +50,7 @@ function goalCard(res) {
   const steps = capSteps(s.baseline);
   const zero = addDays(s.startDate, ZERO_DAY - 1);
   const cur = plan.day < 1 ? -1 : steps.indexOf(plan.cap);
-  return `<section class="card">
+  return `<section class="card goal-card">
     ${cardHead('Your goal: quit Tansen', 'taper', plan.day >= 1 ? `Day ${Math.min(plan.day, 90)}/90` : '')}
     <div class="row" style="align-items:baseline;gap:14px"><span class="hero-figure">${s.baseline} → 0</span><span class="muted small">pouches / day</span></div>
     <p class="small muted" style="margin-top:6px">Pouch-free from <b>${esc(longDate(zero))}</b> (day ${ZERO_DAY}). Today's cap: <b>${plan.cap}</b>.</p>
@@ -246,7 +246,8 @@ export const coachActions = {
   'kegel-add': () => {
     update(() => { dayRecord(todayKey()).kegels = (dayRecord(todayKey()).kegels || 0) + 1; });
     const n = dayRecord(todayKey()).kegels;
-    toast(n >= KEGEL_SETS ? `All ${KEGEL_SETS} sets done today 💪` : `Set ${n} of ${KEGEL_SETS} done`);
+    if (n === KEGEL_SETS) celebrate(`All ${KEGEL_SETS} pelvic-floor sets done 🧘`);
+    else toast(n > KEGEL_SETS ? 'Extra set logged 💪' : `Set ${n} of ${KEGEL_SETS} done`);
   },
   'stamina-log': (el) => {
     update((s) => { s.vitality.push({ date: todayKey(), sec: Number(el.dataset.sec), ts: Date.now() }); });

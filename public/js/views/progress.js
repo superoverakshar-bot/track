@@ -4,6 +4,7 @@ import { heatmap, timeChart } from '../charts.js';
 import { getState, peekDay, todayKey } from '../store.js';
 import { esc, plural, shortDate } from '../ui.js';
 import { cardHead } from './parts.js';
+import { badges } from '../achievements.js';
 import { taperChart } from './taper.js';
 
 function tiles() {
@@ -23,10 +24,22 @@ function tiles() {
   </div>`;
 }
 
+function medalsCard() {
+  const list = badges();
+  const got = list.filter((b) => b.unlocked).length;
+  return `<section class="card">
+    ${cardHead('Achievements', null, `<span class="score ${got === list.length ? 'full' : ''}">${got}/${list.length}</span>`)}
+    <div class="meter" style="margin:-4px 0 14px"><span style="width:${(got / list.length) * 100}%"></span></div>
+    <div class="medals">${list.map((b) => `<div class="medal ${b.unlocked ? '' : 'locked'}" aria-label="${esc(b.name)}: ${esc(b.desc)}${b.unlocked ? ', unlocked' : ', locked'}">
+      <div class="m" aria-hidden="true">${b.emoji}</div><b>${esc(b.name)}</b><span>${esc(b.desc)}</span></div>`).join('')}</div>
+  </section>`;
+}
+
 export function render() {
   const anyDays = programKeysSoFar().length > 0;
   return `<div class="stack">
     ${tiles()}
+    ${medalsCard()}
     <section class="card">${cardHead('Pouches vs cap', 'taper', '90 days')}
       <div class="legend"><span><i style="background:var(--s1)"></i>Pouches</span><span><i style="background:var(--bad)"></i>Over cap</span><span><i class="line" style="background:var(--ink-3)"></i>Daily cap</span></div>
       <div id="p-taper"></div></section>

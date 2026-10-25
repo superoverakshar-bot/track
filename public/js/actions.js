@@ -3,7 +3,8 @@ import { BUFFER_MIN, BUFFER_WATER_ML, CIRCUIT_ROUND, GAP_MIN, MORNING_LOCK_MIN }
 import { FLAG_TEXT, bufferEnds, cravingState, planFor, pouchFlags } from './logic.js';
 import { cancelOnce, scheduleOnce } from './notify.js';
 import { dayRecord, getState, todayKey, update } from './store.js';
-import { clock, dialog, esc, toast, vibrate } from './ui.js';
+import { clock, dialog, esc, toast } from './ui.js';
+import { celebrate } from './joy.js';
 
 const MIN = 60000;
 const clampAdd = (v, n) => Math.max(0, (v || 0) + n);
@@ -85,8 +86,8 @@ export const actions = {
       s.craving = null;
     });
     cancelOnce('craving');
-    vibrate([40, 40, 80]);
-    toast('Urge beaten 💪 One pouch saved');
+    const n = dayRecord(todayKey()).saved;
+    celebrate(n > 1 ? `Urge beaten! 💪 ${n} saved today` : 'Urge beaten! 💪 One pouch saved');
   },
   'craving-cancel': () => {
     update((s) => { s.craving = null; });

@@ -19,6 +19,8 @@ export function defaultSettings() {
     reminders: {},
     theme: 'system',
     focusAreas: ['quit', 'energy', 'focus', 'stamina'],
+    why: '', // personal reason, shown on Today and during urges
+    pricePerPouch: 0, // ₹, for money saved
     aiPrivate: true,
     pushCode: '',
     onboarded: false,
@@ -64,6 +66,8 @@ function fresh() {
     vitality: [], // [{ date, sec, ts }] private stamina log
     ai: null, // last AI coach reply { at, day, question, result }
     dismissed: null, // { day, ids } suggestions hidden for today
+    badgesSeen: [], // achievement ids already celebrated
+    perfectDay: null, // last day a 5/5 was celebrated
     notify: { enabled: false, push: false, endpoint: null, lastSync: 0, syncedHash: '', once: {} },
   };
 }

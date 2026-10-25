@@ -1,5 +1,7 @@
 import { PROGRAM_DAYS, WALK_MIN, WALK_PHASES, walkSegments } from './plan.js';
-import { planFor } from './logic.js';
+import { planFor, scoreFor } from './logic.js';
+import { badges } from './achievements.js';
+import { celebrate } from './joy.js';
 import { actions } from './actions.js';
 import { initNotifications, scheduleLocal } from './notify.js';
 import { getState, subscribe, todayKey, update } from './store.js';
@@ -53,7 +55,7 @@ function applyTheme(theme) {
   if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
   else delete document.documentElement.dataset.theme;
   const dark = theme === 'dark' || (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0d0d0d' : '#f4f4f1');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0d0a1a' : '#fff8f3');
 }
 
 function header(name) {
@@ -125,6 +127,33 @@ function render() {
   restoreFocus(focus);
   renderWalk(true);
   tick();
+  checkMilestones();
+}
+
+// ---------- celebrations ----------
+
+let milestoneTimer;
+let lastParty = 0;
+function checkMilestones() {
+  clearTimeout(milestoneTimer);
+  const wait = Math.max(400, 3500 - (Date.now() - lastParty));
+  milestoneTimer = setTimeout(() => {
+    const s = getState();
+    if (!s.settings.onboarded) return;
+    const key = todayKey();
+    if (scoreFor(key) === 5 && s.perfectDay !== key) {
+      lastParty = Date.now();
+      update((st) => { st.perfectDay = key; });
+      celebrate('Perfect day! ⭐ All 5 non-negotiables done');
+      return;
+    }
+    const fresh = badges().filter((b) => b.unlocked && !s.badgesSeen.includes(b.id));
+    if (fresh.length) {
+      lastParty = Date.now();
+      update((st) => { st.badgesSeen = [...st.badgesSeen, ...fresh.map((b) => b.id)]; });
+      celebrate(fresh.length === 1 ? `Badge unlocked: ${fresh[0].emoji} ${fresh[0].name}` : `${fresh.length} badges unlocked! ${fresh.map((b) => b.emoji).join(' ')}`);
+    }
+  }, wait);
 }
 
 // ---------- live counters ----------

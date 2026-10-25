@@ -14,6 +14,7 @@ An installable web app (PWA) for a 90-day health reset, with reminders that arri
 | **Smart coach** | Turns your logs into ranked, time-aware next actions: craving-peak warnings, cap pacing ("one every 70 min at most"), water behind pace, and the habits that actually lift *your* energy and focus. Also a daily energy/focus/sleep check-in and a "what your data says" panel. |
 | **AI coach (optional)** | Gemini 3.8 Flash (via OpenRouter) reads a numbers-only summary of your last 14 days and writes a 24-hour plan, or answers your question. |
 | **Bedroom stamina (private)** | Pelvic-floor training (3 sets/day), a private duration log with trend, and evidence-based techniques. Never shown on the Today screen or in notifications. |
+| **Motivation** | A sunrise-themed Today hero with a daily inspiration line, your personal "why", pouches avoided, money saved (₹) and streak. A breathing animation during the urge buffer, confetti for wins (urge beaten, perfect day, personal bests), and 15 achievement badges. |
 | **Progress** | Pouches vs. the 90-day cap, 30-minute distance next to pouches per day (same dates, two charts), daily reps, waist trend. |
 
 Reminders adapt to what you've logged. If you already had the 4 PM snack, the 4 PM push says "Shield done ✓"; if you're behind on water it tells you by how much; the wake-up push recaps yesterday.

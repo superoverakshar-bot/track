@@ -3,9 +3,10 @@ import { BUFFER_MIN, BUFFER_WATER_ML, MICRO_SET, WALK_PHASES, paceText } from '.
 import { checklist, cravingState, gapEnd, lastPouch, microSetDone, morningLockEnd, planFor, streak } from '../logic.js';
 import { getState } from '../store.js';
 import { clock, esc, icon, mmss, plural } from '../ui.js';
+import { PILLAR_EMOJI } from '../joy.js';
 
 export function cardHead(title, pillar, meta = '') {
-  const dot = pillar ? `<span class="pillar-dot" style="background:var(--p-${pillar})"></span>` : '';
+  const dot = pillar ? `<span class="bubble ${pillar}" aria-hidden="true">${PILLAR_EMOJI[pillar] || '✨'}</span>` : '';
   return `<div class="card-head">${dot}<h2>${esc(title)}</h2>${meta ? `<span class="meta">${meta}</span>` : ''}</div>`;
 }
 
@@ -13,9 +14,11 @@ export function ring(used, cap) {
   const r = 50;
   const c = 2 * Math.PI * r;
   const frac = cap > 0 ? Math.min(used / cap, 1) : used > 0 ? 1 : 0;
-  const color = used > cap ? 'var(--bad)' : used === cap && cap > 0 ? 'var(--warn)' : 'var(--accent)';
+  const color = used > cap ? 'var(--bad)' : used === cap && cap > 0 ? 'var(--warn)' : 'url(#ringGrad)';
   return `<div class="ring" role="img" aria-label="${used} of ${cap} pouches used">
-    <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="${r}" fill="none" stroke-width="10"/>
+    <svg viewBox="0 0 120 120"><defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c3aed"/><stop offset=".55" stop-color="#db2777"/><stop offset="1" stop-color="#f97316"/></linearGradient></defs>
+    <circle class="track" cx="60" cy="60" r="${r}" fill="none" stroke-width="10"/>
     <circle class="val" cx="60" cy="60" r="${r}" fill="none" stroke="${color}" stroke-width="10" stroke-linecap="round"
       stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - frac)}"/></svg>
     <div class="label"><b>${used}</b><span>of ${cap} cap</span></div></div>`;
@@ -48,17 +51,20 @@ export function cravingBlock(now) {
   }
   const water = `<button class="check ${c.water ? 'on' : ''}" data-action="craving-water" aria-pressed="${c.water}">
       <span class="box">${icon('check')}</span><span class="txt"><b>Drink ${BUFFER_WATER_ML} ml water</b><span>Required before a log</span></span></button>`;
+  const why = getState().settings.why;
   if (!c.done) {
     return `<div class="buffer" role="timer">
-      <div class="row"><div><div class="small muted">Urge buffer</div><div class="count" data-countdown="${c.endsAt}" data-rerender>${mmss(c.left)}</div></div>
+      <div class="row"><div><div class="small muted">Urge buffer · ride the wave</div><div class="count" data-countdown="${c.endsAt}" data-rerender>${mmss(c.left)}</div></div>
       <span class="spacer"></span><button class="btn sm ghost" data-action="craving-cancel">Cancel</button></div>
+      <div class="breathe" aria-hidden="true"><span class="in">Breathe in</span><span class="out">Breathe out</span></div>
+      ${why ? `<p class="remember">Remember why: <b>${esc(why)}</b></p>` : ''}
       ${water}
       <div class="small">Chew elaichi or roasted saunf, walk for 2 minutes, breathe out slowly. Urges peak and pass.</div>
       <div class="btn-row"><button class="btn good" data-action="craving-saved">${icon('check')}Urge passed</button>
       <button class="btn" data-action="pouch-log">Log pouch</button></div></div>`;
   }
   return `<div class="buffer done">
-    <div><b>Buffer complete.</b> <span class="muted">Still want it? Be honest — both answers help.</span></div>
+    <div><b>You made it through 15 minutes 🎉</b> <span class="muted">Still want it? Be honest; both answers help.</span></div>
     ${c.water ? '' : water}
     <div class="btn-row"><button class="btn good" data-action="craving-saved">${icon('check')}Urge passed — saved</button>
     <button class="btn" data-action="pouch-log">Log pouch</button></div></div>`;
@@ -88,7 +94,8 @@ export function checklistCard(key, rec) {
     ${cardHead('Daily non-negotiables', null, meta)}
     <div class="checklist">${items.map((i) => `<button class="check ${i.done ? 'on' : ''} ${i.fail ? 'fail' : ''}" data-action="check" data-id="${i.id}" aria-pressed="${i.done}">
       <span class="box">${i.fail ? icon('x') : icon('check')}</span><span class="txt"><b>${esc(i.label)}</b><span>${esc(i.sub)}</span></span></button>`).join('')}</div>
-    ${current ? `<p class="small muted" style="margin-top:10px">${icon('flame', 'inline')} ${plural(current, 'day')} in a row at 5/5</p>` : ''}
+    ${score === 5 ? '<div class="perfect">⭐ Perfect day! All 5 done. Proud of you.</div>' : ''}
+    ${current ? `<p class="small muted" style="margin-top:10px">🔥 ${plural(current, 'day')} in a row at 5/5</p>` : ''}
   </section>`;
 }
 

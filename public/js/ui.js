@@ -80,7 +80,7 @@ export const plural = (n, w, ws = w.endsWith('h') ? `${w}es` : `${w}s`) => `${n}
 // ---- toast ----
 
 let toastTimer;
-export function toast(text) {
+export function toast(text, kind = '') {
   let wrap = document.querySelector('.toast-wrap');
   if (!wrap) {
     wrap = document.createElement('div');
@@ -91,11 +91,11 @@ export function toast(text) {
   }
   wrap.innerHTML = '';
   const t = document.createElement('div');
-  t.className = 'toast';
+  t.className = `toast ${kind}`.trim();
   t.textContent = text;
   wrap.append(t);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.remove(), 3200);
+  toastTimer = setTimeout(() => t.remove(), kind === 'party' ? 4200 : 3200);
 }
 
 // ---- dialogs ----

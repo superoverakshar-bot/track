@@ -22,6 +22,18 @@ function input(key, type, value, extra = '') {
   return `<input class="input" id="set-${key}" type="${type}" data-change="setting" data-key="${key}" value="${esc(value)}" ${extra}>`;
 }
 
+function motivationSection(s) {
+  return `<section class="card goal-card" id="motivation">
+    ${cardHead('Motivation', 'taper', '💜')}
+    <div class="stack" style="gap:12px">
+      <label class="field"><span>My why</span>
+        <textarea class="input" id="set-why" data-change="setting" data-key="why" maxlength="140" rows="2" placeholder="e.g. More energy for my family, a clear head at work, feeling strong again">${esc(s.why)}</textarea>
+        <small>Shown on Today and during every urge buffer.</small></label>
+      ${field('Price per pouch (₹)', input('pricePerPouch', 'number', s.pricePerPouch || '', 'min="0" max="1000" step="0.5" inputmode="decimal" placeholder="e.g. 10"'), 'Turns avoided pouches into money saved.')}
+    </div>
+  </section>`;
+}
+
 function planSection(s) {
   return `<section class="card">
     ${cardHead('Plan', 'taper')}
@@ -127,6 +139,7 @@ function dataSection() {
 export function render() {
   const s = getState().settings;
   return `<div class="stack">
+    ${motivationSection(s)}
     ${notifySection(s)}
     ${planSection(s)}
     ${scheduleSection(s)}
@@ -136,7 +149,7 @@ export function render() {
   </div>`;
 }
 
-const NUM = { baseline: [0, 100, 1], waterTargetL: [1, 6, 0.25], alcoholMax: [0, 10, 1] };
+const NUM = { baseline: [0, 100, 1], waterTargetL: [1, 6, 0.25], alcoholMax: [0, 10, 1], pricePerPouch: [0, 1000, 0.5] };
 
 function changed() {
   settingsChanged();
@@ -153,6 +166,7 @@ export const changes = {
       v = Math.min(max, Math.max(min, Math.round(v / step) * step));
     } else if (el.type === 'time' && !isValidTime(v)) return;
     else if (el.type === 'date' && !isValidKey(v)) return;
+    else if (key === 'why') v = v.trim().slice(0, 140);
     update((s) => { s.settings[key] = v; });
     changed();
   },

@@ -3,6 +3,7 @@ import { planFor, stats } from '../logic.js';
 import { timeChart } from '../charts.js';
 import { emptyDay, getState, peekDay, todayKey, update } from '../store.js';
 import { esc, icon, shortDate, toast } from '../ui.js';
+import { celebrate } from '../joy.js';
 import { cardHead, microProgress, walkPhaseLine, walkSummary } from './parts.js';
 
 const ENERGY = ['', 'Drained', 'Low', 'OK', 'Good', 'Strong'];
@@ -214,7 +215,8 @@ export const submits = {
       s.walks.push(walk);
       s.walkDraft = null;
     });
-    toast(distanceKm > prevBest && prevBest ? `New personal best: ${distanceKm.toFixed(2)} km 🏆` : `Saved · ${paceText(durationMin, distanceKm)}`);
+    if (distanceKm > prevBest && prevBest) celebrate(`New personal best: ${distanceKm.toFixed(2)} km 🏆`);
+    else toast(`Saved · ${paceText(durationMin, distanceKm)} 👟`);
   },
   'waist-save': (form) => {
     const inches = Math.round(Number(form.elements.inches.value) * 10) / 10;
