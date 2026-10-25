@@ -11,6 +11,13 @@ const PILLAR_COLOR = { taper: 'taper', move: 'move', strength: 'strength', fuel:
 const LEVELS = ['', 'Very low', 'Low', 'OK', 'Good', 'Great'];
 let aiBusy = false;
 
+// "google/gemini-3.8-flash" → "Gemini 3.8 Flash"
+function modelName(id) {
+  if (!id) return 'AI';
+  return id.split('/').pop().split(':')[0].split('-')
+    .map((w) => (/^\d/.test(w) ? w : w[0].toUpperCase() + w.slice(1))).join(' ');
+}
+
 function actionButton(a, cls = 'btn sm') {
   if (!a) return '';
   const data = Object.entries(a.data || {}).map(([k, v]) => `data-${k}="${esc(v)}"`).join(' ');
@@ -145,18 +152,18 @@ function aiCard() {
   if (!cfg.ai) {
     return `<section class="card">
       ${cardHead('AI coach', null, '<span class="badge">Not set up</span>')}
-      <p class="small muted">${cfg.unreachable ? 'Needs the online server; this works on your Vercel deployment.' : 'Add an <code>ANTHROPIC_API_KEY</code> in Vercel to get a personalised AI plan and ask questions about your data. The built-in coach above already works without it.'}</p>
+      <p class="small muted">${cfg.unreachable ? 'Needs the online server; this works on your Vercel deployment.' : 'Add an <code>OPENROUTER_API_KEY</code> in Vercel to get a personalised AI plan (Gemini 3.8 Flash) and ask questions about your data. The built-in coach above already works without it.'}</p>
     </section>`;
   }
   const r = ai?.result;
   return `<section class="card" id="ai">
-    ${cardHead('AI coach', null, '<span class="badge info">Claude</span>')}
+    ${cardHead('AI coach', null, `<span class="badge info">${esc(modelName(cfg.aiModel))}</span>`)}
     <p class="small muted">Reads a summary of your last 14 days and writes a plan for the next 24 hours, or answers your question.</p>
     <label class="field" style="margin-top:10px"><span class="sr-only">Ask a question</span>
       <input class="input" id="ai-q" type="text" maxlength="500" placeholder="Optional: e.g. why am I tired at 3 PM?" autocomplete="off"></label>
     ${stamina ? `<label class="row small" style="margin-top:10px"><input type="checkbox" data-change="ai-private" ${st.settings.aiPrivate ? 'checked' : ''}> Include private stamina data</label>` : ''}
     <button class="btn primary block" style="margin-top:12px" data-action="ai-ask" ${aiBusy ? 'disabled' : ''}>${aiBusy ? 'Thinking… (up to a minute)' : `${icon('flame')}Get my AI plan`}</button>
-    <p class="tiny muted" style="margin-top:6px">Sends numbers only (no name or contact details) to Anthropic's API via your server.</p>
+    <p class="tiny muted" style="margin-top:6px">Sends numbers only (no name or contact details) to ${esc(modelName(cfg.aiModel))} through OpenRouter, via your server.</p>
     ${r ? `<div class="ai-result">
       ${ai.question ? `<p class="small muted">You asked: “${esc(ai.question)}”</p>` : ''}
       <p class="ai-headline">${esc(r.headline)}</p>

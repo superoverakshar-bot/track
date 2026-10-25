@@ -10,7 +10,7 @@ An installable web app (PWA) for a 90-day health reset, with reminders that arri
 | **4. Vegetarian nutrition** | Morning 500 ml water, a water meter, sprouts/protein/vascular-booster checkboxes, the 4 PM Energy Shield, and the 2.5-hour dinner cutoff countdown. |
 | **Daily non-negotiables** | Five checks scored 0–5 each day, a streak and a 90-day calendar heatmap. |
 | **Smart coach** | Turns your logs into ranked, time-aware next actions: craving-peak warnings, cap pacing ("one every 70 min at most"), water behind pace, and the habits that actually lift *your* energy and focus. Also a daily energy/focus/sleep check-in and a "what your data says" panel. |
-| **AI coach (optional)** | Claude reads a numbers-only summary of your last 14 days and writes a 24-hour plan, or answers your question. |
+| **AI coach (optional)** | Gemini 3.8 Flash (via OpenRouter) reads a numbers-only summary of your last 14 days and writes a 24-hour plan, or answers your question. |
 | **Bedroom stamina (private)** | Pelvic-floor training (3 sets/day), a private duration log with trend, and evidence-based techniques. Never shown on the Today screen or in notifications. |
 | **Progress** | Pouches vs. the 90-day cap, 30-minute distance next to pouches per day (same dates, two charts), daily reps, waist trend. |
 
@@ -74,13 +74,18 @@ If something isn't set, **Settings → Notifications** lists the missing variabl
 
 ## AI coach (optional)
 
-The built-in coach works with no setup. To also get Claude-written plans:
+The built-in coach works with no setup. To also get AI-written plans from **Google Gemini 3.8 Flash via [OpenRouter](https://openrouter.ai)**:
 
-1. Create an API key at [console.anthropic.com](https://console.anthropic.com).
-2. Add `ANTHROPIC_API_KEY` in Vercel → Settings → Environment Variables, then redeploy.
+1. Create a key at [openrouter.ai/keys](https://openrouter.ai/keys) and add a few dollars of credit.
+2. Add `OPENROUTER_API_KEY` in Vercel → Settings → Environment Variables, then redeploy.
 3. Open **Coach → AI coach → Get my AI plan** (optionally type a question).
 
-The app sends a numbers-only summary (no name or contact details): today, the last 14 days, recent walks and waist, and the patterns the built-in coach found. Private stamina data is included only while *Include private stamina data* is ticked. The function uses `claude-opus-5-5` with structured JSON output. If the model declines a request, Anthropic's server-side fallback (`fallbacks: "default"`) retries it on another model automatically. Each plan typically costs a few US cents. Set `PUSH_ACCESS_CODE` so only you can use it.
+| Variable | Purpose |
+|---|---|
+| `OPENROUTER_API_KEY` | Required for the AI coach. |
+| `OPENROUTER_MODEL` | Optional. Any OpenRouter model ID that supports structured outputs. The default is `google/gemini-3.8-flash`; `~google/gemini-flash-latest` always tracks the newest Gemini Flash. |
+
+The app sends a numbers-only summary (no name or contact details): today, the last 14 days, recent walks and waist, and the patterns the built-in coach found. Private stamina data is included only while *Include private stamina data* is ticked. The request asks for a strict JSON schema and tells OpenRouter to route only to providers that support it (`provider.require_parameters`). A plan costs about a cent or less. Because the summary is health data, review which providers OpenRouter may use in its privacy settings, and set `PUSH_ACCESS_CODE` so only you can spend your credits.
 
 ## Reminders
 
@@ -143,7 +148,7 @@ public/              static PWA (no build step)
   js/charts.js       SVG charts with tooltips and data tables
   js/views/*.js      Today, Coach, Taper, Move, Fuel, Progress, Settings
 api/push/*.js        Vercel functions: config, sync, once, cancel, unsubscribe, test, deliver
-api/coach.js         AI coach (Claude)
+api/coach.js         AI coach (OpenRouter → Gemini 3.8 Flash)
 lib/server.js        validation, QStash + web-push helpers
 scripts/dev.mjs      zero-dependency local server
 test/                node:test suites
