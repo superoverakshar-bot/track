@@ -1,0 +1,72 @@
+// Service worker: offline app shell (network-first, cache fallback) + push display.
+const CACHE = 'track-v1';
+const SHELL = [
+  '/', '/index.html', '/manifest.webmanifest', '/css/app.css',
+  '/js/app.js', '/js/actions.js', '/js/charts.js', '/js/logic.js', '/js/notify.js', '/js/plan.js',
+  '/js/reminders.js', '/js/store.js', '/js/ui.js',
+  '/js/views/fuel.js', '/js/views/move.js', '/js/views/onboarding.js', '/js/views/parts.js',
+  '/js/views/progress.js', '/js/views/settings.js', '/js/views/taper.js', '/js/views/today.js',
+  '/icons/icon.svg', '/icons/icon-192.png', '/icons/badge-96.png',
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  const url = new URL(req.url);
+  if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  event.respondWith(
+    fetch(req)
+      .then((res) => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
+        return res;
+      })
+      .catch(async () => (await caches.match(req, { ignoreSearch: true }))
+        || (req.mode === 'navigate' ? caches.match('/index.html') : Response.error())),
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let m = {};
+  try {
+    m = event.data ? event.data.json() : {};
+  } catch {
+    m = { title: 'Track', body: event.data?.text() };
+  }
+  event.waitUntil(self.registration.showNotification(m.title || 'Track', {
+    body: m.body || '',
+    tag: m.tag || 'track',
+    renotify: true,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/badge-96.png',
+    vibrate: [80, 40, 80],
+    data: { url: m.url || '/#today' },
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/#today';
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const client = all.find((c) => new URL(c.url).origin === self.location.origin);
+    if (client) {
+      client.postMessage({ type: 'navigate', url });
+      return client.focus();
+    }
+    return self.clients.openWindow(url);
+  })());
+});
