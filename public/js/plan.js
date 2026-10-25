@@ -14,7 +14,7 @@ export const PHASES = [
   { id: 'stabilize', name: 'Stabilize', from: 1, to: 14, rule: 'Freeze at baseline − 2' },
   { id: 'cut1', name: 'Cut 1', from: 15, to: 30, rule: 'Daily cap down 25%' },
   { id: 'cut2', name: 'Cut 2', from: 31, to: 60, rule: '50% of baseline + 2-hour gaps' },
-  { id: 'final', name: 'Final Taper', from: 61, to: 90, rule: '2 → 1 → 0 with mouth replacements' },
+  { id: 'final', name: 'Final Taper', from: 61, to: 90, rule: 'Weekly steps down to zero, with mouth replacements' },
 ];
 const PRE_PHASE = { id: 'pre', name: 'Not started', from: -Infinity, to: 0, rule: 'Plan starts soon' };
 const FREE_PHASE = { id: 'free', name: 'Pouch-free', from: 91, to: Infinity, rule: 'Zero pouches — protect the win' };
@@ -122,15 +122,33 @@ export function phaseFor(day) {
 }
 
 // Cap for each block. Every cut is at least one pouch lower than the previous
-// block (until zero) so small baselines still taper.
+// block (until zero) so small baselines still taper. The final taper (days
+// 61–84) steps down weekly by at most ~40% to 2 → 1, so high baselines don't
+// face a cliff; day 85 onwards is zero.
+export const ZERO_DAY = 85;
+
 export function capSchedule(baseline) {
   const b = Math.max(0, Math.round(Number(baseline) || 0));
   const stabilize = b > 2 ? b - 2 : b;
   const cut1 = Math.max(0, Math.min(Math.floor(b * 0.75), stabilize - 1));
   const cut2 = Math.max(0, Math.min(Math.floor(b * 0.5), cut1 - 1));
-  const final2 = Math.min(2, cut2);
-  const final1 = Math.min(1, final2);
-  return { baseline: b, stabilize, cut1, cut2, final2, final1 };
+  const steps = [];
+  let x = cut2;
+  while (x > 2) {
+    x = Math.min(x - 1, Math.max(2, Math.round(x * 0.6)));
+    if (x > 2) steps.push(x);
+  }
+  for (const v of [Math.min(2, cut2), Math.min(1, cut2)]) {
+    if (v > 0 && v !== steps[steps.length - 1]) steps.push(v);
+  }
+  const span = (ZERO_DAY - 61) / (steps.length || 1);
+  const final = steps.map((cap, i) => ({ from: 61 + Math.round(i * span), to: 60 + Math.round((i + 1) * span), cap }));
+  return { baseline: b, stabilize, cut1, cut2, final };
+}
+
+export function capSteps(baseline) {
+  const s = capSchedule(baseline);
+  return [s.stabilize, s.cut1, s.cut2, ...s.final.map((f) => f.cap), 0];
 }
 
 export function dailyCap(baseline, day) {
@@ -139,9 +157,7 @@ export function dailyCap(baseline, day) {
   if (day <= 14) return s.stabilize;
   if (day <= 30) return s.cut1;
   if (day <= 60) return s.cut2;
-  if (day <= 72) return s.final2;
-  if (day <= 84) return s.final1;
-  return 0;
+  return s.final.find((f) => day >= f.from && day <= f.to)?.cap ?? 0;
 }
 
 export function gapRuleActive(day) {

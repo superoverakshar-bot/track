@@ -4,8 +4,10 @@
 //            backgrounded. Used when the server isn't configured.
 import { addDays, tsForDayTime, weekday } from './plan.js';
 import { buildMessage, messageContext, resolveReminders } from './reminders.js';
-import { getState, peekDay, todayKey, update } from './store.js';
+import { getState, peekDay, subscribe, todayKey, update } from './store.js';
 import { gapEnd, morningLockEnd, planFor } from './logic.js';
+import { postJson } from './api.js';
+import { smartLine, smartSnapshot } from './coach.js';
 
 const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -54,6 +56,8 @@ export async function initNotifications() {
     });
   }
   config = await fetchConfig();
+  writeSnapshot();
+  subscribe(writeSnapshot);
   const n = getState().notify;
   if (n.enabled && permission() !== 'granted') {
     update((s) => { s.notify.enabled = false; s.notify.push = false; });
@@ -64,15 +68,7 @@ export async function initNotifications() {
   return config;
 }
 
-async function api(path, body) {
-  const headers = { 'content-type': 'application/json' };
-  const code = getState().settings.pushCode;
-  if (code) headers['x-access-code'] = code;
-  const r = await fetch(`/api/push/${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
-  return data;
-}
+const api = (path, body) => postJson(`/api/push/${path}`, body);
 
 function b64ToBytes(b64) {
   const s = atob((b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
@@ -224,6 +220,19 @@ export async function sendTest() {
   return s.notify.enabled ? 'local' : 'preview';
 }
 
+// ---- smart reminder text for the service worker ----
+
+let snapTimer;
+export function writeSnapshot() {
+  clearTimeout(snapTimer);
+  snapTimer = setTimeout(async () => {
+    try {
+      const cache = await caches.open('track-smart');
+      await cache.put('/__smart.json', new Response(JSON.stringify(smartSnapshot()), { headers: { 'content-type': 'application/json' } }));
+    } catch { /* storage unavailable */ }
+  }, 500);
+}
+
 // ---- local timers ----
 
 let timers = [];
@@ -259,7 +268,8 @@ export function scheduleLocal() {
     const delay = e.at - now;
     if (delay <= 0 || delay > 36 * 3600000) continue;
     timers.push(setTimeout(() => {
-      show(buildMessage(e.key, messageContext(getState().settings, tz()), Date.now(), e.data || {})).catch(() => null);
+      const m = buildMessage(e.key, messageContext(getState().settings, tz()), Date.now(), e.data || {});
+      show({ ...m, ...smartLine(smartSnapshot(), e.key) }).catch(() => null);
     }, delay));
   }
 }

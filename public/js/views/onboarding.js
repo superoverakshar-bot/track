@@ -1,10 +1,9 @@
-import { capSchedule, isValidKey, isValidTime } from '../plan.js';
+import { capSteps, isValidKey, isValidTime } from '../plan.js';
 import { getState, update } from '../store.js';
 import { esc } from '../ui.js';
 
 export function render() {
   const s = getState().settings;
-  const c = capSchedule(s.baseline);
   return `<main class="onboard">
     <img class="logo" src="/icons/icon-192.png" alt="">
     <div><h1>Your 90-day reset</h1>
@@ -21,7 +20,7 @@ export function render() {
       <label class="field"><span>Usual wake time</span><input class="input" name="wakeTime" type="time" value="${s.wakeTime}" required></label>
       <label class="field"><span>Usual bedtime</span><input class="input" name="sleepTime" type="time" value="${s.sleepTime}" required></label>
       <label class="field full"><span>Daily 30-min walk at</span><input class="input" name="walkTime" type="time" value="${s.walkTime}" required></label>
-      <p class="full small muted" id="cap-preview">Your caps: ${c.stabilize} → ${c.cut1} → ${c.cut2} → ${c.final2} → ${c.final1} → 0 over 90 days.</p>
+      <p class="full small muted" id="cap-preview">Your caps: ${capSteps(s.baseline).join(' → ')} over 90 days.</p>
       <button class="btn primary block full" type="submit">Start my 90 days</button>
     </form>
     <p class="tiny muted">Data stays on this device. Not medical advice — check with a doctor if you have heart, liver or blood-pressure concerns.</p>
@@ -32,8 +31,7 @@ export function mount(root) {
   const input = root.querySelector('[name="baseline"]');
   const preview = root.querySelector('#cap-preview');
   input?.addEventListener('input', () => {
-    const c = capSchedule(Number(input.value) || 0);
-    preview.textContent = `Your caps: ${c.stabilize} → ${c.cut1} → ${c.cut2} → ${c.final2} → ${c.final1} → 0 over 90 days.`;
+    preview.textContent = `Your caps: ${capSteps(Number(input.value) || 0).join(' → ')} over 90 days.`;
   });
 }
 

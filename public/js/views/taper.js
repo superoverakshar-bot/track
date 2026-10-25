@@ -1,4 +1,4 @@
-import { MORNING_LOCK_MIN, PHASES, PROGRAM_DAYS, addDays, capSchedule, dailyCap, programDay, tsForDayTime } from '../plan.js';
+import { MORNING_LOCK_MIN, PHASES, PROGRAM_DAYS, ZERO_DAY, addDays, capSchedule, dailyCap, programDay, tsForDayTime } from '../plan.js';
 import { FLAG_TEXT, planFor, programKeysSoFar, rangeKeys, stats, wakeTs } from '../logic.js';
 import { timeChart } from '../charts.js';
 import { emptyDay, getState, peekDay, todayKey, update, dayRecord } from '../store.js';
@@ -11,15 +11,15 @@ const FLAG_SHORT = { morning: 'Morning lock', gap: '< 2 h gap', cap: 'Over cap',
 function phaseCard(plan) {
   const s = getState().settings;
   const caps = capSchedule(s.baseline);
+  // [label, rule, cap, from, to]
   const rows = [
-    ['Days 1–14', 'Stabilize', `Baseline ${caps.baseline} − 2`, caps.stabilize, 'stabilize'],
-    ['Days 15–30', 'Cut 1', 'Cap down 25%', caps.cut1, 'cut1'],
-    ['Days 31–60', 'Cut 2', '50% + 2-hour gaps', caps.cut2, 'cut2'],
-    ['Days 61–72', 'Final taper', 'Max 2', caps.final2, 'final'],
-    ['Days 73–84', 'Final taper', 'Max 1', caps.final1, 'final'],
-    ['Days 85–90', 'Zero out', 'Mouth replacements', 0, 'final'],
+    ['Days 1–14', `Baseline ${caps.baseline} − 2`, caps.stabilize, 1, 14],
+    ['Days 15–30', 'Cap down 25%', caps.cut1, 15, 30],
+    ['Days 31–60', '50% + 2-hour gaps', caps.cut2, 31, 60],
+    ...caps.final.map((f) => [`Days ${f.from}–${f.to}`, 'Final taper step', f.cap, f.from, f.to]),
+    [`Days ${ZERO_DAY}–90`, 'Zero · mouth replacements', 0, ZERO_DAY, Infinity],
   ];
-  const nowRow = plan.day <= 14 ? 0 : plan.day <= 30 ? 1 : plan.day <= 60 ? 2 : plan.day <= 72 ? 3 : plan.day <= 84 ? 4 : 5;
+  const nowRow = rows.findIndex((r) => plan.day >= r[3] && plan.day <= r[4]);
   const bars = PHASES.map((p) => {
     if (plan.day > p.to) return '<div class="done"></div>';
     if (plan.day >= p.from) return `<div class="now"><span style="width:${((plan.day - p.from + 1) / (p.to - p.from + 1)) * 100}%"></span></div>`;
@@ -32,7 +32,7 @@ function phaseCard(plan) {
     <div class="phases">${bars}</div><div class="phase-labels">${labels}</div>
     <p class="small" style="margin-top:12px"><b>${esc(plan.phase.name)}:</b> ${esc(plan.phase.rule)}</p>
     <table class="caps" style="margin-top:10px"><thead><tr><th>Block</th><th>Rule</th><th style="text-align:right">Cap</th></tr></thead><tbody>
-    ${rows.map((r, i) => `<tr class="${i === nowRow && plan.inProgram ? 'now' : ''}"><td>${r[0]}</td><td>${r[2]}</td><td class="num">${r[3]}</td></tr>`).join('')}
+    ${rows.map((r, i) => `<tr class="${i === nowRow && plan.inProgram ? 'now' : ''}"><td>${r[0]}</td><td>${r[1]}</td><td class="num">${r[2]}</td></tr>`).join('')}
     </tbody></table>
     <p class="tiny muted" style="margin-top:8px">Baseline is set in Settings. Caps step down automatically from your start date.</p>
   </section>`;

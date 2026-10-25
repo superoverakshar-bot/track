@@ -14,6 +14,7 @@ export const REMINDERS = [
   { key: 'lunch', label: 'Sprouts + protein before lunch', time: '12:45' },
   { key: 'shield', label: '4:00 PM Energy Shield', time: '16:00' },
   { key: 'water2', label: 'Hydration check (evening)', time: '18:00' },
+  { key: 'kegel', label: 'Pelvic-floor set (Bedroom stamina focus)', time: '14:00', focus: 'stamina' },
   { key: 'walk', label: '30-min mileage session', anchor: 'walkTime', offset: 0 },
   { key: 'circuit', label: 'Calisthenics circuit day', anchor: 'circuitTime', offset: 0, days: 'circuitDays' },
   { key: 'alcohol', label: 'Alcohol guardrail (designated days)', time: '19:00', days: 'alcoholDays' },
@@ -44,7 +45,8 @@ export function resolveReminders(settings) {
       const v = settings[def.days];
       days = (Array.isArray(v) ? v : []).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
     }
-    const on = pref.on !== false && (days === null || days.length > 0);
+    const focusOk = !def.focus || (settings.focusAreas || []).includes(def.focus);
+    const on = pref.on !== false && focusOk && (days === null || days.length > 0);
     return { key: def.key, label: def.label, time, days, on, editable: !def.anchor };
   });
 }
@@ -88,7 +90,7 @@ export function buildMessage(key, ctx, now = Date.now(), data = {}) {
 
   switch (key) {
     case 'wake':
-      return msg(`☀️ ${info.label}`, `500 ml water first. No pouch for 90 min — tap “I'm awake” to start the oxygen window. ${capText}.`);
+      return msg(`☀️ ${info.label}`, `500 ml water first. No pouch for 90 min. Tap “I'm awake” and rate your sleep. ${capText}.`);
     case 'microset':
       return msg('💪 Morning micro-set', `Before your shower: ${MICRO_SET.pushups}–15 push-ups · ${MICRO_SET.squats}–20 squats · ${MICRO_SET.plankSec}–45 s plank.`, '/#move');
     case 'water1':
@@ -111,6 +113,8 @@ export function buildMessage(key, ctx, now = Date.now(), data = {}) {
       const cutoff = dinnerCutoff(ctx.sleepTime);
       return msg(`🍽️ Kitchen closes at ${cutoff}`, `Finish dinner 2.5 h before sleep (${ctx.sleepTime}) for deeper sleep and less morning bloat.`, '/#fuel');
     }
+    case 'kegel':
+      return msg('🧘 Pelvic-floor set', '10 slow squeezes (hold 3 s, relax 3 s), then 10 quick ones. About 2 minutes.', '/#coach');
     case 'waist':
       return msg('📏 Weekly waist check', 'Measure at the navel after a relaxed exhale and log it.', '/#move');
     case 'checkin':

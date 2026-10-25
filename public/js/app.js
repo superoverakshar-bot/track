@@ -5,6 +5,7 @@ import { initNotifications, scheduleLocal } from './notify.js';
 import { getState, subscribe, todayKey, update } from './store.js';
 import { esc, icon, longDate, mmss, since, toast, vibrate } from './ui.js';
 import * as today from './views/today.js';
+import * as coachView from './views/coach.js';
 import * as taper from './views/taper.js';
 import * as move from './views/move.js';
 import * as fuel from './views/fuel.js';
@@ -14,6 +15,7 @@ import * as onboarding from './views/onboarding.js';
 
 const ROUTES = {
   today: { view: today, title: 'Today', icon: 'home', tab: 'Today' },
+  coach: { view: coachView, title: 'Coach', icon: 'spark', tab: 'Coach' },
   taper: { view: taper, title: 'Taper', icon: 'leaf', tab: 'Taper' },
   move: { view: move, title: 'Move', icon: 'run', tab: 'Move' },
   fuel: { view: fuel, title: 'Fuel', icon: 'bowl', tab: 'Fuel' },
@@ -27,7 +29,7 @@ const ACTIONS = {
   ...actions,
   ...move.moveActions,
   ...settings.settingsActions,
-  'hide-notify-banner': () => update((s) => { s.settings.hideNotifyBanner = true; }),
+  ...coachView.coachActions,
   install: async () => {
     if (!installPrompt) return;
     installPrompt.prompt();
@@ -36,7 +38,7 @@ const ACTIONS = {
     render();
   },
 };
-const CHANGES = { ...taper.changes, ...fuel.changes, ...settings.changes };
+const CHANGES = { ...taper.changes, ...fuel.changes, ...settings.changes, ...coachView.coachChanges };
 const SUBMITS = { ...move.submits, ...onboarding.submits };
 
 const root = document.getElementById('root');
@@ -83,24 +85,28 @@ function installCard() {
 function captureFocus() {
   const a = document.activeElement;
   if (!a || !a.id || !root.contains(a)) return null;
-  return { id: a.id, start: a.selectionStart, end: a.selectionEnd };
+  const typed = ['text', 'password', 'number', 'search'].includes(a.type);
+  return { id: a.id, start: a.selectionStart, end: a.selectionEnd, value: typed ? a.value : null };
 }
 
 function restoreFocus(f) {
   if (!f) return;
   const el = document.getElementById(f.id);
   if (!el) return;
+  if (f.value != null) el.value = f.value;
   el.focus({ preventScroll: true });
   try { if (f.start != null) el.setSelectionRange(f.start, f.end); } catch { /* not a text input */ }
 }
 
 let lastRoute = null;
 let renderedDay = todayKey();
+let renderedAt = 0;
 
 function render() {
   const s = getState();
   applyTheme(s.settings.theme);
   renderedDay = todayKey();
+  renderedAt = Date.now();
   if (!s.settings.onboarded) {
     root.innerHTML = onboarding.render();
     onboarding.mount(root);
@@ -129,6 +135,11 @@ function tick() {
   if (todayKey() !== renderedDay) {
     render();
     scheduleLocal();
+    return;
+  }
+  // Suggestions are time-aware; refresh them every few minutes while the app is open.
+  if (now - renderedAt > 5 * 60000 && !document.querySelector('dialog[open]') && !getState().walkTimer) {
+    render();
     return;
   }
   for (const el of root.querySelectorAll('[data-countdown]')) {
@@ -302,4 +313,4 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => appl
 subscribe(render);
 render();
 setInterval(tick, 1000);
-initNotifications().then(() => { if (route() === 'settings') render(); });
+initNotifications().then(render); // server features (push, AI) known now

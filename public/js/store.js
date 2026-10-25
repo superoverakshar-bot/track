@@ -6,7 +6,7 @@ const KEY = 'track.v1';
 export function defaultSettings() {
   return {
     startDate: toKey(new Date()),
-    baseline: 10,
+    baseline: 20,
     wakeTime: '06:30',
     sleepTime: '23:00',
     walkTime: '07:00',
@@ -18,6 +18,8 @@ export function defaultSettings() {
     waterTargetL: 3,
     reminders: {},
     theme: 'system',
+    focusAreas: ['quit', 'energy', 'focus', 'stamina'],
+    aiPrivate: true,
     pushCode: '',
     onboarded: false,
   };
@@ -42,6 +44,8 @@ export function emptyDay() {
     rounds: 0,
     drinks: 0,
     drinkWater: 0,
+    checkin: null, // { energy: 1-5, focus: 1-5, sleepHrs }
+    kegels: 0, // pelvic-floor sets
   };
 }
 
@@ -57,6 +61,9 @@ function fresh() {
     walkTimer: null, // { startedAt, mode, pausedAt, pausedMs }
     walkDraft: null, // prefill for the walk log after a timed session
     hold: null, // { kind: 'plank'|'hang', startedAt }
+    vitality: [], // [{ date, sec, ts }] private stamina log
+    ai: null, // last AI coach reply { at, day, question, result }
+    dismissed: null, // { day, ids } suggestions hidden for today
     notify: { enabled: false, push: false, endpoint: null, lastSync: 0, syncedHash: '', once: {} },
   };
 }
@@ -77,6 +84,7 @@ function normalize(raw) {
   }
   s.walks = Array.isArray(raw.walks) ? raw.walks.filter((w) => isValidKey(w?.date)) : [];
   s.waist = Array.isArray(raw.waist) ? raw.waist.filter((w) => isValidKey(w?.date)) : [];
+  s.vitality = Array.isArray(raw.vitality) ? raw.vitality.filter((v) => isValidKey(v?.date) && v.sec > 0) : [];
   return s;
 }
 

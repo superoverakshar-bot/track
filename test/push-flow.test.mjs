@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { SignJWT } from 'jose';
 import webpush from 'web-push';
 import { Client } from '@upstash/qstash';
+import { SCHEDULED_KEYS } from '../public/js/reminders.js';
 
 const SIGNING_KEY = 'sig_test_current_key';
 const calls = { create: [], delete: [], publish: [], push: [] };
@@ -67,7 +68,7 @@ test('sync upserts enabled reminders and deletes the rest', async () => {
   assert.equal(byId['ht-device-1234-circuit'].cron, 'CRON_TZ=Asia/Kolkata 30 18 * * 1,3,5');
   assert.equal(JSON.parse(byId['ht-device-1234-shield'].body).sub.endpoint, sub.endpoint);
   assert.ok(calls.delete.includes('ht-device-1234-wake'));
-  assert.equal(calls.create.length + calls.delete.length, 12);
+  assert.equal(calls.create.length + calls.delete.length, SCHEDULED_KEYS.length);
 });
 
 test('once publishes at the requested time', async () => {
@@ -104,7 +105,7 @@ test('expired subscriptions stop their schedules instead of retrying', async () 
   const res = await deliver.fetch(await signed({ v: 1, uid: 'device-1234', key: 'checkin', sub, ctx: { ...ctx, tz: 'UTC' } }));
   assert.equal(res.status, 200);
   assert.equal((await res.json()).gone, true);
-  assert.equal(calls.delete.length, 12);
+  assert.equal(calls.delete.length, SCHEDULED_KEYS.length);
 });
 
 test('transient push failures return 500 so QStash retries', async () => {

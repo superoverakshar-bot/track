@@ -9,7 +9,12 @@ An installable web app (PWA) for a 90-day health reset, with reminders that arri
 | **3. Calisthenics & core** | Quick-tap counters for push-ups, squats, pull-ups and core reps. Plank and dead-hang stopwatch. Morning micro-set detection, a Mon/Wed/Fri circuit round tracker and a weekly waist log. |
 | **4. Vegetarian nutrition** | Morning 500 ml water, a water meter, sprouts/protein/vascular-booster checkboxes, the 4 PM Energy Shield, and the 2.5-hour dinner cutoff countdown. |
 | **Daily non-negotiables** | Five checks scored 0–5 each day, a streak and a 90-day calendar heatmap. |
+| **Smart coach** | Turns your logs into ranked, time-aware next actions: craving-peak warnings, cap pacing ("one every 70 min at most"), water behind pace, and the habits that actually lift *your* energy and focus. Also a daily energy/focus/sleep check-in and a "what your data says" panel. |
+| **AI coach (optional)** | Claude reads a numbers-only summary of your last 14 days and writes a 24-hour plan, or answers your question. |
+| **Bedroom stamina (private)** | Pelvic-floor training (3 sets/day), a private duration log with trend, and evidence-based techniques. Never shown on the Today screen or in notifications. |
 | **Progress** | Pouches vs. the 90-day cap, 30-minute distance next to pouches per day (same dates, two charts), daily reps, waist trend. |
+
+Reminders adapt to what you've logged. If you already had the 4 PM snack, the 4 PM push says "Shield done ✓"; if you're behind on water it tells you by how much; the wake-up push recaps yesterday.
 
 All logs stay on your device (`localStorage`). Use **Settings → Export** for backups or to move to a new phone.
 
@@ -62,10 +67,20 @@ Redeploy the **production** deployment. QStash calls back to your production URL
 
 | Variable | Purpose |
 |---|---|
-| `PUSH_ACCESS_CODE` | If set, the app must enter this code (Settings → Notifications) before it can create schedules. This stops strangers who find your URL from using your QStash quota. |
+| `PUSH_ACCESS_CODE` | If set, the app must enter this code (Settings → Notifications) before it can create schedules or use the AI coach. This stops strangers who find your URL from spending your QStash or Anthropic quota. Recommended once the AI coach is on. |
 | `APP_URL` | Overrides the public base URL QStash calls back to (defaults to the Vercel production URL). Set it when you use a custom domain. |
 
 If something isn't set, **Settings → Notifications** lists the missing variables.
+
+## AI coach (optional)
+
+The built-in coach works with no setup. To also get Claude-written plans:
+
+1. Create an API key at [console.anthropic.com](https://console.anthropic.com).
+2. Add `ANTHROPIC_API_KEY` in Vercel → Settings → Environment Variables, then redeploy.
+3. Open **Coach → AI coach → Get my AI plan** (optionally type a question).
+
+The app sends a numbers-only summary (no name or contact details): today, the last 14 days, recent walks and waist, and the patterns the built-in coach found. Private stamina data is included only while *Include private stamina data* is ticked. The function uses `claude-opus-5-5` with structured JSON output. If the model declines a request, Anthropic's server-side fallback (`fallbacks: "default"`) retries it on another model automatically. Each plan typically costs a few US cents. Set `PUSH_ACCESS_CODE` so only you can use it.
 
 ## Reminders
 
@@ -76,6 +91,7 @@ Every reminder can be switched on or off in Settings. Times tied to your schedul
 | Wake-up hydration + 90-min lock | wake time |
 | Morning micro-set | wake + 20 min |
 | Hydration checks | 11:00, 18:00 (editable) |
+| Pelvic-floor set | 14:00 (editable; on when *Bedroom stamina* is a focus area) |
 | Sprouts + protein before lunch | 12:45 (editable) |
 | 4:00 PM Energy Shield | 16:00 (editable) |
 | 30-min mileage session | walk time |
@@ -88,15 +104,17 @@ Every reminder can be switched on or off in Settings. Times tied to your schedul
 
 ## Taper math
 
-Caps come from your **baseline** (pouches/day before day 1). Each block is at least one pouch lower than the one before, so small baselines still taper.
+Caps come from your **baseline** (pouches/day before day 1; default 20). Each block is at least one pouch lower than the one before. The final taper steps down every week by at most ~40%, ending 2 → 1 → 0, so a high baseline never faces a cliff.
 
-| Days | Rule | Baseline 10 → cap |
+| Days | Rule | Baseline 20 → cap |
 |---|---|---|
-| 1–14 | Stabilize: baseline − 2 | 8 |
-| 15–30 | Cut 1: 75% of baseline | 7 |
-| 31–60 | Cut 2: 50% of baseline + strict 2-hour gaps | 5 |
-| 61–72 | Final taper: max 2 | 2 |
-| 73–84 | Final taper: max 1 | 1 |
+| 1–14 | Stabilize: baseline − 2 | 18 |
+| 15–30 | Cut 1: 75% of baseline | 15 |
+| 31–60 | Cut 2: 50% of baseline + strict 2-hour gaps | 10 |
+| 61–66 | Final taper | 6 |
+| 67–72 | Final taper | 4 |
+| 73–78 | Final taper | 2 |
+| 79–84 | Final taper | 1 |
 | 85–90+ | Zero, with mouth replacements (elaichi, saunf, dhana dal) | 0 |
 
 A tracking day runs from 04:00 to 03:59, so a late night counts toward the day you started.
@@ -106,7 +124,7 @@ A tracking day runs from 04:00 to 03:59, so a late night counts toward the day y
 ```bash
 npm install
 npm run dev      # http://localhost:3000 (serves public/ and runs api/ like Vercel)
-npm test         # plan logic, reminder copy and push handlers
+npm test         # plan logic, coach rules, reminder copy, push + AI handlers
 ```
 
 Put env vars in `.env.local` (see `.env.example`) to test push locally. QStash can't call `localhost`, so set `APP_URL` to a public tunnel URL for end-to-end tests.
@@ -120,10 +138,12 @@ public/              static PWA (no build step)
   js/reminders.js    reminder catalogue + notification copy (shared with the server)
   js/store.js        localStorage state
   js/logic.js        rules, checklist, streaks, stats
+  js/coach.js        smart coach: suggestions, patterns, adaptive reminder text, AI summary
   js/notify.js       permission, push subscription, local fallback timers
   js/charts.js       SVG charts with tooltips and data tables
-  js/views/*.js      Today, Taper, Move, Fuel, Progress, Settings
+  js/views/*.js      Today, Coach, Taper, Move, Fuel, Progress, Settings
 api/push/*.js        Vercel functions: config, sync, once, cancel, unsubscribe, test, deliver
+api/coach.js         AI coach (Claude)
 lib/server.js        validation, QStash + web-push helpers
 scripts/dev.mjs      zero-dependency local server
 test/                node:test suites

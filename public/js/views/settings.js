@@ -1,4 +1,4 @@
-import { WEEKDAYS, capSchedule, dinnerCutoff, isValidKey, isValidTime } from '../plan.js';
+import { WEEKDAYS, capSteps, dinnerCutoff, isValidKey, isValidTime } from '../plan.js';
 import { resolveReminders } from '../reminders.js';
 import {
   disableNotifications, enableNotifications, getConfig, mode, permission, sendTest, settingsChanged, support, syncPush,
@@ -22,14 +22,13 @@ function input(key, type, value, extra = '') {
 }
 
 function planSection(s) {
-  const c = capSchedule(s.baseline);
   return `<section class="card">
     ${cardHead('Plan', 'taper')}
     <div class="form-grid">
       ${field('Start date (day 1)', input('startDate', 'date', s.startDate))}
       ${field('Baseline pouches / day', input('baseline', 'number', s.baseline, 'min="0" max="100" inputmode="numeric"'), 'Your usual daily count before starting')}
     </div>
-    <p class="small muted" style="margin-top:10px">Caps: ${c.stabilize} → ${c.cut1} → ${c.cut2} → ${c.final2} → ${c.final1} → 0</p>
+    <p class="small muted" style="margin-top:10px">Caps: ${capSteps(s.baseline).join(' → ')}</p>
   </section>`;
 }
 

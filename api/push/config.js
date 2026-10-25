@@ -1,5 +1,5 @@
-// GET /api/push/config — tells the app whether server push is available.
-import { json, missingEnv } from '../../lib/server.js';
+// GET /api/push/config — tells the app which server features are available.
+import { aiConfigured, json, missingEnv } from '../../lib/server.js';
 
 export default {
   fetch() {
@@ -8,6 +8,7 @@ export default {
       push: missing.length === 0,
       publicKey: process.env.VAPID_PUBLIC_KEY || null,
       needsCode: Boolean(process.env.PUSH_ACCESS_CODE),
+      ai: aiConfigured(),
       missing,
     });
   },

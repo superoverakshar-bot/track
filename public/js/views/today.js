@@ -1,24 +1,19 @@
-import { MORNING_LOCK_MIN, tsForDayTime } from '../plan.js';
+import { coach } from '../coach.js';
 import { planFor } from '../logic.js';
 import { mode as notifyMode } from '../notify.js';
 import { emptyDay, getState, peekDay, todayKey } from '../store.js';
 import { esc, icon } from '../ui.js';
+import { suggestionRow, visibleSuggestions } from './coach.js';
 import { cardHead, checklistCard, microProgress, taperCard, walkPhaseLine, walkSummary, waterCard } from './parts.js';
 
-function wakeBanner(key, rec, now) {
-  if (rec.wakeAt || rec.pouches.length) return '';
-  const planned = tsForDayTime(key, getState().settings.wakeTime);
-  if (now < planned - 3 * 3600000 || now > planned + 5 * 3600000) return '';
-  return `<div class="banner info">${icon('sun')}<div class="grow"><b>Log your wake-up</b><span class="small">Starts the ${MORNING_LOCK_MIN}-min oxygen window. 500 ml water first.</span></div>
-    <button class="btn sm primary" data-action="wake">I'm awake</button></div>`;
-}
-
-function notifyBanner() {
-  const s = getState();
-  if (notifyMode() !== 'off' || s.settings.hideNotifyBanner) return '';
-  return `<div class="banner">${icon('bell')}<div class="grow"><b>Turn on reminders</b><span class="small">Water, 4 PM shield, kitchen cutoff, craving timer…</span></div>
-    <button class="btn sm primary" data-action="nav" data-to="#settings">Set up</button>
-    <button class="icon-btn" style="width:32px;height:32px;border:0;background:transparent" data-action="hide-notify-banner" aria-label="Dismiss">${icon('x')}</button></div>`;
+function smartCard() {
+  const res = coach(Date.now(), { notifyMode: notifyMode() });
+  const list = visibleSuggestions(res).filter((x) => !x.private).slice(0, 3);
+  return `<section class="card smart">
+    ${cardHead('Smart actions', null, '<a class="small" href="#coach">Coach →</a>')}
+    ${list.length ? `<div class="tips">${list.map((x) => suggestionRow(x, { dismissable: true })).join('')}</div>` : '<div class="empty">All caught up. Nice work.</div>'}
+    ${res.wins.length ? `<div class="chips" style="margin-top:10px">${res.wins.slice(0, 2).map((w) => `<span class="chip win">${icon('check', 'inline')} ${esc(w)}</span>`).join('')}</div>` : ''}
+  </section>`;
 }
 
 function moveCard(key, rec) {
@@ -57,8 +52,7 @@ export function render() {
   const rec = peekDay(key) || emptyDay();
   const now = Date.now();
   return `<div class="stack">
-    ${notifyBanner()}
-    ${wakeBanner(key, rec, now)}
+    ${smartCard()}
     ${taperCard(key, rec, now)}
     ${checklistCard(key, rec)}
     ${waterCard(rec, true)}

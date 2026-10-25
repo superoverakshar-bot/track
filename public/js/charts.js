@@ -61,7 +61,7 @@ function legendHtml(series) {
 function tableHtml(cfg) {
   const rows = cfg.keys.filter((k) => cfg.series.some((s) => s.values[k] != null));
   if (!rows.length) return '';
-  const head = `<tr><th>Date</th>${cfg.series.map((s) => `<th>${esc(s.name)}</th>`).join('')}</tr>`;
+  const head = `<tr><th>${esc(cfg.xName || 'Date')}</th>${cfg.series.map((s) => `<th>${esc(s.name)}</th>`).join('')}</tr>`;
   const body = rows.slice().reverse().map((k) => `<tr><td>${esc(cfg.xLabel(k, true))}</td>${cfg.series.map((s) => `<td>${s.values[k] == null ? '—' : esc(s.fmt(s.values[k]))}</td>`).join('')}</tr>`).join('');
   return `<details class="chart-table"><summary>Show data table</summary><div class="scroll"><table>${head}${body}</table></div></details>`;
 }

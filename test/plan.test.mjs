@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  addDays, capSchedule, dailyCap, dayKeyAt, diffDays, distanceTarget, gapRuleActive, minToTime, paceText,
+  addDays, capSchedule, capSteps, dailyCap, dayKeyAt, diffDays, distanceTarget, gapRuleActive, minToTime, paceText,
   phaseFor, programDay, shiftTime, walkModeFor, walkSegments, dinnerCutoff,
 } from '../public/js/plan.js';
 
@@ -12,18 +12,31 @@ test('date math crosses months and DST-free', () => {
   assert.equal(programDay('2026-10-25', addDays('2026-10-25', 89)), 90);
 });
 
-test('cap schedule steps down for a baseline of 10', () => {
-  assert.deepEqual(capSchedule(10), { baseline: 10, stabilize: 8, cut1: 7, cut2: 5, final2: 2, final1: 1 });
-  const caps = [1, 14, 15, 30, 31, 60, 61, 72, 73, 84, 85, 90, 91].map((d) => dailyCap(10, d));
-  assert.deepEqual(caps, [8, 8, 7, 7, 5, 5, 2, 2, 1, 1, 0, 0, 0]);
-  assert.equal(dailyCap(10, 0), 10);
+test('20/day tapers weekly with no cliff after day 60', () => {
+  assert.deepEqual(capSteps(20), [18, 15, 10, 6, 4, 2, 1, 0]);
+  const caps = [1, 14, 15, 30, 31, 60, 61, 66, 67, 72, 73, 78, 79, 84, 85, 90, 91].map((d) => dailyCap(20, d));
+  assert.deepEqual(caps, [18, 18, 15, 15, 10, 10, 6, 6, 4, 4, 2, 2, 1, 1, 0, 0, 0]);
+  assert.equal(dailyCap(20, 0), 20);
 });
 
-test('small baselines still taper every block', () => {
-  assert.deepEqual(capSchedule(6), { baseline: 6, stabilize: 4, cut1: 3, cut2: 2, final2: 2, final1: 1 });
-  assert.deepEqual(capSchedule(2), { baseline: 2, stabilize: 2, cut1: 1, cut2: 0, final2: 0, final1: 0 });
-  assert.deepEqual(capSchedule(20), { baseline: 20, stabilize: 18, cut1: 15, cut2: 10, final2: 2, final1: 1 });
-  for (const b of [0, 1, 3, 5, 8, 12, 30]) {
+test('baseline 10 and small baselines still taper every block', () => {
+  assert.deepEqual(capSteps(10), [8, 7, 5, 3, 2, 1, 0]);
+  assert.deepEqual(capSchedule(10).final, [{ from: 61, to: 68, cap: 3 }, { from: 69, to: 76, cap: 2 }, { from: 77, to: 84, cap: 1 }]);
+  assert.deepEqual(capSteps(6), [4, 3, 2, 2, 1, 0]);
+  assert.deepEqual(capSteps(2), [2, 1, 0, 0]);
+  for (const b of [0, 1, 2, 3, 5, 8, 12, 20, 30, 40]) {
+    const s = capSchedule(b);
+    // final steps tile days 61–84 exactly
+    if (s.final.length) {
+      assert.equal(s.final[0].from, 61);
+      assert.equal(s.final[s.final.length - 1].to, 84);
+      s.final.slice(1).forEach((f, i) => assert.equal(f.from, s.final[i].to + 1));
+    }
+    let prevStep = Infinity;
+    for (const f of s.final) {
+      assert.ok(f.cap < prevStep || prevStep === Infinity);
+      prevStep = f.cap;
+    }
     let prev = Infinity;
     for (let d = 1; d <= 91; d++) {
       const c = dailyCap(b, d);

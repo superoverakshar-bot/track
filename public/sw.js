@@ -1,10 +1,11 @@
 // Service worker: offline app shell (network-first, cache fallback) + push display.
 const CACHE = 'track-v1';
+const SMART = 'track-smart'; // reminder text written by the app (see coach.js smartSnapshot)
 const SHELL = [
   '/', '/index.html', '/manifest.webmanifest', '/css/app.css',
-  '/js/app.js', '/js/actions.js', '/js/charts.js', '/js/logic.js', '/js/notify.js', '/js/plan.js',
+  '/js/app.js', '/js/actions.js', '/js/api.js', '/js/charts.js', '/js/coach.js', '/js/logic.js', '/js/notify.js', '/js/plan.js',
   '/js/reminders.js', '/js/store.js', '/js/ui.js',
-  '/js/views/fuel.js', '/js/views/move.js', '/js/views/onboarding.js', '/js/views/parts.js',
+  '/js/views/coach.js', '/js/views/fuel.js', '/js/views/move.js', '/js/views/onboarding.js', '/js/views/parts.js',
   '/js/views/progress.js', '/js/views/settings.js', '/js/views/taper.js', '/js/views/today.js',
   '/icons/icon.svg', '/icons/icon-192.png', '/icons/badge-96.png',
 ];
@@ -16,7 +17,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== SMART).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -39,6 +40,20 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+// The app keeps a snapshot of reminder text that reflects what you've logged
+// today ("Shield done ✓", "1.2 L behind on water"); prefer it over the server copy.
+async function smartLine(tag) {
+  try {
+    const res = await caches.match('/__smart.json', { cacheName: SMART });
+    if (!res) return null;
+    const now = Date.now();
+    const snap = await res.json();
+    return snap.blocks?.find((b) => now >= b.from && now < b.until)?.lines?.[tag] || null;
+  } catch {
+    return null;
+  }
+}
+
 self.addEventListener('push', (event) => {
   let m = {};
   try {
@@ -46,15 +61,18 @@ self.addEventListener('push', (event) => {
   } catch {
     m = { title: 'Track', body: event.data?.text() };
   }
-  event.waitUntil(self.registration.showNotification(m.title || 'Track', {
-    body: m.body || '',
-    tag: m.tag || 'track',
-    renotify: true,
-    icon: '/icons/icon-192.png',
-    badge: '/icons/badge-96.png',
-    vibrate: [80, 40, 80],
-    data: { url: m.url || '/#today' },
-  }));
+  event.waitUntil((async () => {
+    Object.assign(m, await smartLine(m.tag));
+    await self.registration.showNotification(m.title || 'Track', {
+      body: m.body || '',
+      tag: m.tag || 'track',
+      renotify: true,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/badge-96.png',
+      vibrate: [80, 40, 80],
+      data: { url: m.url || '/#today' },
+    });
+  })());
 });
 
 self.addEventListener('notificationclick', (event) => {
