@@ -4,7 +4,7 @@ const SMART = 'track-smart'; // reminder text written by the app (see coach.js s
 const SHELL = [
   '/', '/index.html', '/manifest.webmanifest', '/css/app.css',
   '/js/app.js', '/js/actions.js', '/js/api.js', '/js/charts.js', '/js/coach.js', '/js/logic.js', '/js/notify.js', '/js/plan.js',
-  '/js/reminders.js', '/js/store.js', '/js/ui.js',
+  '/js/reminders.js', '/js/store.js', '/js/ui.js', '/js/vapid.js',
   '/js/views/coach.js', '/js/views/fuel.js', '/js/views/move.js', '/js/views/onboarding.js', '/js/views/parts.js',
   '/js/views/progress.js', '/js/views/settings.js', '/js/views/taper.js', '/js/views/today.js',
   '/icons/icon.svg', '/icons/icon-192.png', '/icons/badge-96.png',

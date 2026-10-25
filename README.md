@@ -22,9 +22,12 @@ All logs stay on your device (`localStorage`). Use **Settings → Export** for b
 
 ## Deploy to Vercel
 
-1. Go to [vercel.com/new](https://vercel.com/new) and import this GitHub repository.
-2. Keep the defaults. `vercel.json` already sets the framework to *Other* and the output directory to `public`; there is no build command.
-3. Click **Deploy**. The app works right away, with in-app reminders.
+1. Sign in at [vercel.com](https://vercel.com) with GitHub (the free Hobby plan is enough).
+2. Go to [vercel.com/new](https://vercel.com/new) → **Import Git Repository** → pick `superoverakshar-bot/track`. If it isn't listed, choose *Adjust GitHub App Permissions* and give Vercel access to the repo.
+3. Keep every default. `vercel.json` already sets the framework to *Other*, the output directory to `public` and a 60 s limit for the AI coach; there is no build command.
+4. Click **Deploy**. In about a minute you get a URL like `track-xxxx.vercel.app`, and the app works right away with in-app reminders.
+
+Vercel deploys production from the repo's default branch. Every later push redeploys automatically, and environment variable changes take effect after **Deployments → ⋯ → Redeploy**.
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fsuperoverakshar-bot%2Ftrack)
 
@@ -42,17 +45,14 @@ Without this setup, reminders only show while the app is open or in the backgrou
 
 ### 1. Create VAPID keys (identifies your server to push services)
 
-```bash
-npm install
-npm run vapid
-```
+Easiest: open your deployed app → **Settings → Notifications → Generate VAPID keys**. The keys are made in your browser and never leave the device. Or, on a computer with Node: `npm install && npm run vapid`.
 
 In **Vercel → Project → Settings → Environment Variables**, add:
 
 | Name | Value |
 |---|---|
-| `VAPID_PUBLIC_KEY` | the *Public Key* printed above |
-| `VAPID_PRIVATE_KEY` | the *Private Key* printed above (keep it secret) |
+| `VAPID_PUBLIC_KEY` | the public key |
+| `VAPID_PRIVATE_KEY` | the private key (keep it secret) |
 | `VAPID_SUBJECT` | `mailto:you@example.com` (your email) |
 
 ### 2. Connect Upstash QStash

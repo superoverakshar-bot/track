@@ -6,6 +6,7 @@ import {
 import { exportJson, getState, importJson, resetAll, update } from '../store.js';
 import { confirmDialog, esc, icon, toast } from '../ui.js';
 import { cardHead } from './parts.js';
+import { generateVapidKeys } from '../vapid.js';
 
 const anchorNote = { wake: 'wake time', microset: 'wake + 20 min', walk: 'walk time', circuit: 'circuit time', dinner: 'cutoff − 30 min', checkin: 'bedtime − 1 h' };
 
@@ -49,6 +50,20 @@ function scheduleSection(s) {
   </section>`;
 }
 
+let vapidKeys = null;
+
+// In-browser VAPID key generator, so setup doesn't need Node on a computer.
+function vapidHelper(cfg) {
+  if (!(cfg.missing || []).some((k) => k.startsWith('VAPID'))) return '';
+  if (!vapidKeys) {
+    return `<button class="btn sm" style="margin-top:8px" data-action="vapid-gen">Generate VAPID keys</button>`;
+  }
+  const row = (id, name, value) => `<div class="field" style="margin-top:8px"><span>${name}</span>
+    <div class="row"><input class="input" id="${id}" readonly value="${esc(value)}" aria-label="${name}"><button class="btn sm" data-action="copy" data-target="${id}">Copy</button></div></div>`;
+  return `<div class="note" style="margin-top:10px">Add these in Vercel → Settings → Environment Variables, then redeploy. They were made on this device and aren't saved anywhere.
+    ${row('vapid-pub', 'VAPID_PUBLIC_KEY', vapidKeys.publicKey)}${row('vapid-priv', 'VAPID_PRIVATE_KEY (keep secret)', vapidKeys.privateKey)}</div>`;
+}
+
 function notifySection(s) {
   const cfg = getConfig() || {};
   const m = mode();
@@ -61,7 +76,7 @@ function notifySection(s) {
   let server;
   if (cfg.push) server = `<span class="badge good">${icon('check')}Server push ready</span>`;
   else if (cfg.unreachable) server = `<span class="badge">${icon('alert')}Server not reachable (offline or local preview)</span>`;
-  else server = `<span class="badge warn">${icon('alert')}Server push not configured</span><p class="tiny muted" style="margin-top:6px">Missing env vars: ${esc((cfg.missing || []).join(', '))}. See the README's “Push notifications” section.</p>`;
+  else server = `<span class="badge warn">${icon('alert')}Server push not configured</span><p class="tiny muted" style="margin-top:6px">Missing env vars: ${esc((cfg.missing || []).join(', '))}. See the README's “Push notifications” section.</p>${vapidHelper(cfg)}`;
   const iosHint = support.ios && !support.standalone
     ? `<div class="banner info" style="margin-top:12px">${icon('share')}<div class="grow"><b>iPhone / iPad</b><span class="small">Tap Share → <b>Add to Home Screen</b>, open Track from the icon, then enable notifications here.</span></div></div>` : '';
   const blocked = perm === 'denied' ? `<p class="small" style="margin-top:8px"><span class="badge bad">${icon('alert')}Blocked in browser settings</span></p>` : '';
@@ -200,6 +215,20 @@ export const settingsActions = {
       toast(how === 'push' ? 'Test push sent — check your notifications' : 'Test notification shown');
     } catch (err) {
       toast(err.message);
+    }
+  },
+  'vapid-gen': async () => {
+    vapidKeys = await generateVapidKeys();
+    update(() => {});
+  },
+  copy: async (el) => {
+    const input = document.getElementById(el.dataset.target);
+    try {
+      await navigator.clipboard.writeText(input.value);
+      toast('Copied');
+    } catch {
+      input.select();
+      toast('Select and copy the highlighted text');
     }
   },
   'notify-resync': () => syncPush({ force: true }).then(() => toast('Schedules synced')).catch((e) => toast(e.message)),
