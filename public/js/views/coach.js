@@ -8,17 +8,13 @@ import { dayRecord, emptyDay, getState, peekDay, todayKey, update } from '../sto
 import { esc, icon, longDate, shortDate, toast } from '../ui.js';
 import { PILLAR_EMOJI, celebrate } from '../joy.js';
 import { cardHead } from './parts.js';
+import { consentPrompt, modelName } from './privacy.js';
+import { hasConsent, privateAllowed } from '../consent.js';
 
 const PILLAR_TINT = { taper: 'taper', move: 'move', strength: 'strength', fuel: 'fuel', vitality: 'strength', sleep: 'move', focus: 'move', energy: 'fuel' };
 const LEVELS = ['', 'Very low', 'Low', 'OK', 'Good', 'Great'];
 
-// "google/gemini-3.8-flash" → "Gemini 3.8 Flash", "openai/gpt-6-sol" → "GPT-6 Sol"
-export function modelName(id) {
-  if (!id) return 'AI';
-  const words = id.split('/').pop().split(':')[0].split('-');
-  if (words[0].toLowerCase() === 'gpt' && words.length > 1) words.splice(0, 2, `GPT-${words[1]}`);
-  return words.map((w) => (/^(\d|GPT-)/.test(w) ? w : w[0].toUpperCase() + w.slice(1))).join(' ');
-}
+export { modelName };
 
 const clockOf = (ts) => new Date(ts).toTimeString().slice(0, 5);
 
@@ -175,9 +171,17 @@ function aiCard() {
       <p class="small muted">${cfg.unreachable ? 'Needs the online server; this works on your Vercel deployment.' : 'Add an <code>OPENROUTER_API_KEY</code> in Vercel to get a personalised AI plan and an autopilot that moves your reminders to when you really do things. The built-in coach above already works without it.'}</p>
     </section>`;
   }
+  if (cfg.access === 'missing' || cfg.access === 'weak') {
+    return `<section class="card" id="ai">
+      ${cardHead('AI coach & autopilot', null, '<span class="badge warn">Locked</span>')}
+      <p class="small">The server keeps the AI coach locked until it is protected, so strangers who find this web address can't spend your AI credits.</p>
+      <p class="small" style="margin-top:8px">${cfg.access === 'weak' ? 'The access code on the server is too short. Use' : 'Add'} <code>PUSH_ACCESS_CODE</code> (at least 12 characters) in Vercel → Settings → Environment Variables, redeploy, then type the same code in <a href="#settings">Settings → Notifications → Access code</a>.</p>
+    </section>`;
+  }
+  if (!hasConsent('coaching', st)) return consentPrompt();
   const busy = isBusy();
   const r = ai?.result;
-  const showPrivate = stamina && st.settings.aiPrivate;
+  const showPrivate = privateAllowed(st);
   const changes = ap.log.filter((c) => showPrivate || !TUNABLE[c.target]?.private).slice(-6).reverse();
   const planner = modelName(cfg.aiModel);
   const reviewer = cfg.aiReviewModel ? modelName(cfg.aiReviewModel) : null;
@@ -193,9 +197,9 @@ function aiCard() {
     <hr class="divider">
     <label class="field"><span class="small" style="font-weight:800">Ask the coach</span>
       <input class="input" id="ai-q" type="text" maxlength="500" placeholder="Optional: e.g. why am I tired at 3 PM?" autocomplete="off"></label>
-    ${stamina ? `<label class="row small" style="margin-top:10px"><input type="checkbox" data-change="ai-private" ${st.settings.aiPrivate ? 'checked' : ''}> Include private stamina data</label>` : ''}
+    ${stamina ? `<label class="row small" style="margin-top:10px"><input type="checkbox" data-change="consent" data-scope="sexualWellness" ${hasConsent('sexualWellness', st) ? 'checked' : ''}> Include private stamina data</label>` : ''}
     <button class="btn primary block" style="margin-top:12px" data-action="ai-ask" ${busy ? 'disabled' : ''}>${busy ? 'Thinking… (up to a minute)' : `${icon('flame')}Plan my next 24 hours`}</button>
-    <p class="tiny muted" style="margin-top:6px">Sends numbers and times only (no name or contact details) through OpenRouter, via your server.</p>
+    <p class="tiny muted" style="margin-top:6px">Sends numbers and times only (no name or contact details) through OpenRouter, via your server. Private stamina data: ${showPrivate ? 'included' : 'not sent'}. <a href="#settings">Privacy settings</a></p>
     ${r ? `<div class="ai-result">
       ${ai.question ? `<p class="small muted">You asked: “${esc(ai.question)}”</p>` : ai.auto ? '<p class="small muted">🤖 From the autopilot</p>' : ''}
       <p class="ai-headline">${esc(r.headline)}</p>
@@ -312,6 +316,5 @@ export const coachActions = {
 };
 
 export const coachChanges = {
-  'ai-private': (el) => update((s) => { s.settings.aiPrivate = el.checked; }),
   'ap-on': (el) => setOn(el.checked),
 };

@@ -23,7 +23,6 @@ export function defaultSettings() {
     pricePerPouch: 0, // ₹, for money saved
     pouchMin: 20, // how long you usually keep a pouch in; learned from your Done taps
     urgeAlerts: true, // heads-up 10 min before a predicted urge
-    aiPrivate: true,
     pushCode: '',
     onboarded: false,
   };
@@ -74,7 +73,10 @@ function fresh() {
     perfectDay: null, // last day a 5/5 was celebrated
     freeMilestone: null, // { since, hours } pouch-free stretch last celebrated
     opens: [], // app opens (ts), at most one per 20 min
-    autopilot: { on: true, runs: [], log: [], pins: {}, dirtyAt: null, spend: 0 }, // Astra plan tuning (see autopilot.js)
+    lastBackupAt: null, // when a backup was last exported from this device
+    autopilot: { on: false, runs: [], log: [], pins: {}, dirtyAt: null, spend: 0 }, // AI schedule tuning, opt-in (see autopilot.js)
+    consents: {}, // scope → { granted, version, at, revokedAt } (see consent.js)
+    consentLog: [], // every grant and revocation, append-only
     notify: { enabled: false, push: false, endpoint: null, lastSync: 0, syncedHash: '', once: {} },
   };
 }
@@ -95,6 +97,10 @@ function normalize(raw) {
     pins: ap.pins && typeof ap.pins === 'object' ? ap.pins : {},
   };
   s.opens = Array.isArray(raw.opens) ? raw.opens.filter(Number.isFinite) : [];
+  // Saves from before consent existed have none: AI stays off until asked again.
+  s.consents = raw.consents && typeof raw.consents === 'object' ? raw.consents : {};
+  s.consentLog = Array.isArray(raw.consentLog) ? raw.consentLog : [];
+  delete s.settings.aiPrivate; // replaced by the sexualWellness consent
   s.days = {};
   for (const [k, d] of Object.entries(raw.days || {})) {
     if (!isValidKey(k)) continue;
@@ -171,8 +177,14 @@ export function noteOpen(ts = Date.now()) {
   return true;
 }
 
+// A backup of your records. Leaves out this device's push wiring and the server
+// access code: they are tied to this device and aren't yours to carry around.
 export function exportJson() {
-  return JSON.stringify(state, null, 2);
+  const copy = structuredClone(state);
+  delete copy.notify;
+  delete copy.settings.pushCode;
+  copy.exportedAt = Date.now();
+  return JSON.stringify(copy, null, 2);
 }
 
 export function importJson(text) {
@@ -181,6 +193,8 @@ export function importJson(text) {
   const next = normalize(parsed);
   next.notify = state.notify; // keep this device's notification wiring
   next.uid = state.uid;
+  next.settings.pushCode = state.settings.pushCode; // and its access code
+  next.lastBackupAt = state.lastBackupAt;
   update((s) => Object.assign(s, next));
 }
 

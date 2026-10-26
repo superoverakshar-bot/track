@@ -2,8 +2,8 @@
 // morning lock end, 2-hour gap end, time to take a pouch out). Optionally cancels the message it replaces.
 import { ONCE_KEYS } from '../../public/js/reminders.js';
 import {
-  HttpError, checkAccess, deliverUrl, handle, json, qstash, readJson, requirePush,
-  validContext, validKey, validSubscription, validTz, validUid,
+  HttpError, checkAccess, deliverUrl, handle, json, ownerOf, ownsMessage, qstash, rateLimit, readJson, requirePush,
+  validContext, validKey, validSubscription, validTz,
 } from '../../lib/server.js';
 
 export default {
@@ -11,10 +11,11 @@ export default {
     if (request.method !== 'POST') throw new HttpError(405, 'POST only');
     requirePush();
     checkAccess(request);
+    rateLimit(request, 'push', 60, 3600000);
     const body = await readJson(request);
-    const uid = validUid(body.uid);
     const key = validKey(body.key, ONCE_KEYS);
     const sub = validSubscription(body.subscription);
+    const owner = ownerOf(sub);
     const tz = validTz(body.tz);
     const ctx = validContext(body.ctx, tz);
     const at = Number(body.at);
@@ -25,12 +26,13 @@ export default {
     if (/^\d\d:\d\d$/.test(body.data?.next || '')) data.next = body.data.next;
 
     const client = qstash();
-    if (typeof body.replace === 'string' && body.replace) {
+    // Replace only a message this device owns.
+    if (typeof body.replace === 'string' && /^[\w-]{1,128}$/.test(body.replace) && await ownsMessage(client, body.replace, owner)) {
       await client.messages.cancel(body.replace).catch(() => null);
     }
     const res = await client.publishJSON({
       url: deliverUrl(request),
-      body: { v: 1, uid, key, sub, ctx, data },
+      body: { v: 2, owner, key, sub, ctx, data },
       notBefore: Math.floor(Math.max(at, now) / 1000),
       retries: 2,
     });

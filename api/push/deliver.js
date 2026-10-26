@@ -18,7 +18,7 @@ export default {
       throw new HttpError(401, 'Bad signature');
     }
 
-    const { uid, key, sub, ctx, data } = JSON.parse(raw);
+    const { owner, uid, key, sub, ctx, data } = JSON.parse(raw); // v1 bodies carried uid, v2 carry owner
     if (!ALL_KEYS.includes(key)) return json({ ok: false, skipped: 'unknown key' });
 
     try {
@@ -26,7 +26,7 @@ export default {
     } catch (err) {
       if (isGone(err)) {
         // Device unsubscribed or reinstalled: stop the schedules instead of retrying forever.
-        await deleteAllSchedules(qstash(), uid);
+        await deleteAllSchedules(qstash(), owner || uid);
         return json({ ok: false, gone: true });
       }
       throw err; // 500 → QStash retries

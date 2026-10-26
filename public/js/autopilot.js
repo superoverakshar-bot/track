@@ -4,36 +4,16 @@
 // double-checks them on the server (api/coach.js), and the app applies only what
 // passes both and the limits in reminders.js. It never touches the taper.
 // Runs are throttled because each one costs money on OpenRouter.
-import { dayKeyAt } from './plan.js';
 import { formatTunable, planTweaks, setTunable, tunableValue } from './reminders.js';
 import { aiSummary } from './coach.js';
 import { postJson } from './api.js';
 import { getConfig, settingsChanged } from './notify.js';
 import { getState, todayKey, update } from './store.js';
+import { CONSENT_VERSION, consentClaim, hasConsent, privateAllowed } from './consent.js';
+import { PIN_DAYS, QUIET_MS, autoRunCheck } from './autopilot-policy.js';
 import { toast } from './ui.js';
 
-const MIN = 60000;
-export const AUTO_RUNS_PER_DAY = 4;
-export const AUTO_GAP_MIN = 120; // between runs
-export const QUIET_MS = 90000; // wait for a pause in activity before tuning
-export const PIN_DAYS = 7; // your own edits and undos are left alone this long
-
-const includePrivate = (s) => s.settings.aiPrivate && s.settings.focusAreas.includes('stamina');
-
-// Why an automatic run may or may not happen now ('go' when it should).
-export function autoRunCheck(st, now = Date.now()) {
-  const ap = st.autopilot;
-  if (!ap.on) return { status: 'off' };
-  if (!st.settings.onboarded) return { status: 'onboarding' };
-  const today = dayKeyAt(now);
-  const runsToday = ap.runs.filter((r) => r.auto && r.day === today).length;
-  if (runsToday >= AUTO_RUNS_PER_DAY) return { status: 'daily-limit', runsToday };
-  const last = ap.runs.length ? ap.runs[ap.runs.length - 1].at : 0;
-  if (!ap.dirtyAt || ap.dirtyAt <= last) return { status: 'no-news', runsToday, last };
-  if (now - last < AUTO_GAP_MIN * MIN) return { status: 'too-soon', runsToday, last, next: last + AUTO_GAP_MIN * MIN };
-  if (now - ap.dirtyAt < QUIET_MS) return { status: 'settling', runsToday, last, next: ap.dirtyAt + QUIET_MS };
-  return { status: 'go', runsToday, last };
-}
+export { AUTO_GAP_MIN, AUTO_RUNS_PER_DAY, PIN_DAYS, QUIET_MS, autoRunCheck } from './autopilot-policy.js';
 
 // ---- running ----
 
@@ -66,8 +46,9 @@ export async function runCoach({ auto = false, question = '' } = {}) {
   const day = todayKey();
   try {
     const st = getState();
-    const priv = includePrivate(st);
-    const data = await postJson('/api/coach', { summary: aiSummary({ includePrivate: priv }), question, mode: auto ? 'auto' : 'ask' });
+    if (!hasConsent('coaching', st)) throw new Error('AI coaching is off. Turn it on in Coach → AI coach first.');
+    const priv = privateAllowed(st);
+    const data = await postJson('/api/coach', { summary: aiSummary({ includePrivate: priv }), question, mode: auto ? 'auto' : 'ask', consent: consentClaim(st) });
     const { changes } = planTweaks(st.settings, data.result.tweaks, { pins: st.autopilot.pins, includePrivate: priv });
     update((s) => {
       s.ai = { at: Date.now(), day, question, result: data.result, auto, model: data.model, reviewModel: data.reviewModel || null };
@@ -76,7 +57,7 @@ export async function runCoach({ auto = false, question = '' } = {}) {
         s.autopilot.log.push({ id: `${started}-${ch.target}`, at: Date.now(), auto, ...ch });
       }
       s.autopilot.log = s.autopilot.log.slice(-40);
-      s.autopilot.runs = [...s.autopilot.runs, { at: started, day, auto, ok: true, cost: data.cost ?? null, changes: changes.length }].slice(-60);
+      s.autopilot.runs = [...s.autopilot.runs, { at: started, day, auto, ok: true, cost: data.cost ?? null, changes: changes.length, model: data.model, consentVersion: CONSENT_VERSION, private: priv }].slice(-60);
       s.autopilot.spend = Math.round(((s.autopilot.spend || 0) + (data.cost || 0)) * 1e6) / 1e6;
     });
     if (changes.length) {
@@ -121,6 +102,7 @@ export function undoChange(id) {
 }
 
 export function setOn(on) {
+  if (on && !hasConsent('coaching')) return;
   update((s) => { s.autopilot.on = on; });
   if (on) poke(2000);
 }
@@ -131,7 +113,8 @@ export function statusText(now = Date.now()) {
   const c = autoRunCheck(st, now);
   const at = (ts) => new Date(ts).toTimeString().slice(0, 5);
   switch (c.status) {
-    case 'off': return 'Autopilot is off.';
+    case 'no-consent': return 'Off until you agree to AI coaching.';
+    case 'off': return 'Autopilot is off. Turn it on to let the AI move reminder times by itself.';
     case 'onboarding': return 'Starts after setup.';
     case 'daily-limit': return `Tuned ${c.runsToday} times today, the daily limit. Resumes tomorrow.`;
     case 'too-soon': return `New activity logged. Next tune after ${at(c.next)}.`;

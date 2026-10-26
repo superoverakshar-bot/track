@@ -1,11 +1,11 @@
 // Service worker: offline app shell (network-first, cache fallback) + push display.
-const CACHE = 'track-v7';
+const CACHE = 'track-v8';
 const SMART = 'track-smart'; // reminder text written by the app (see coach.js smartSnapshot)
 const SHELL = [
-  '/', '/index.html', '/manifest.webmanifest', '/css/app.css',
-  '/js/app.js', '/js/achievements.js', '/js/actions.js', '/js/api.js', '/js/autopilot.js', '/js/charts.js', '/js/coach.js', '/js/joy.js', '/js/logic.js', '/js/notify.js', '/js/plan.js',
+  '/', '/index.html', '/manifest.webmanifest', '/css/app.css', '/js/theme.js',
+  '/js/app.js', '/js/achievements.js', '/js/actions.js', '/js/api.js', '/js/autopilot.js', '/js/autopilot-policy.js', '/js/backup.js', '/js/consent.js', '/js/privacy-rules.js', '/js/charts.js', '/js/coach.js', '/js/joy.js', '/js/logic.js', '/js/notify.js', '/js/plan.js',
   '/js/reminders.js', '/js/store.js', '/js/taper.js', '/js/ui.js', '/js/vapid.js',
-  '/js/views/coach.js', '/js/views/fuel.js', '/js/views/move.js', '/js/views/onboarding.js', '/js/views/parts.js',
+  '/js/views/coach.js', '/js/views/fuel.js', '/js/views/move.js', '/js/views/onboarding.js', '/js/views/parts.js', '/js/views/privacy.js',
   '/js/views/progress.js', '/js/views/settings.js', '/js/views/taper.js', '/js/views/today.js',
   '/icons/icon.svg', '/icons/icon-192.png', '/icons/badge-96.png',
   '/fonts/PlusJakartaSans-latin.woff2', '/fonts/PlusJakartaSans-latin-ext.woff2',

@@ -123,6 +123,35 @@ export function dialog({ title, html = '', choices = [], choicesLabel = '', butt
   });
 }
 
+// Ask for a password (twice when creating one). Resolves to the password or null.
+export function promptPassword({ title, html = '', confirm = false, okLabel = 'OK' }) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement('dialog');
+    dlg.innerHTML = `<form method="dialog" class="dlg">
+      <h3>${esc(title)}</h3>${html ? `<div>${html}</div>` : ''}
+      <label class="field"><span>Password</span><input class="input" type="password" name="p1" autocomplete="${confirm ? 'new-password' : 'current-password'}" required minlength="8"></label>
+      ${confirm ? '<label class="field"><span>Repeat password</span><input class="input" type="password" name="p2" autocomplete="new-password" required></label>' : ''}
+      <p class="small bad-text" hidden></p>
+      <div class="btn-row"><button class="btn" value="" formnovalidate>Cancel</button><button class="btn primary" value="ok">${esc(okLabel)}</button></div>
+    </form>`;
+    document.body.append(dlg);
+    const form = dlg.querySelector('form');
+    const err = dlg.querySelector('.bad-text');
+    form.addEventListener('submit', (e) => {
+      if (e.submitter?.value !== 'ok') return;
+      const p1 = form.p1.value;
+      const problem = p1.length < 8 ? 'Use at least 8 characters.' : confirm && p1 !== form.p2.value ? 'The passwords don\'t match.' : '';
+      if (problem) { e.preventDefault(); err.textContent = problem; err.hidden = false; }
+    });
+    dlg.addEventListener('close', () => {
+      const value = dlg.returnValue === 'ok' ? form.p1.value : null;
+      dlg.remove();
+      resolve(value);
+    });
+    dlg.showModal();
+  });
+}
+
 export function confirmDialog(title, html, okLabel = 'OK', okCls = 'primary') {
   return dialog({ title, html, buttons: [{ label: 'Cancel', value: false }, { label: okLabel, value: true, cls: okCls }] });
 }

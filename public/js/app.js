@@ -16,6 +16,7 @@ import * as fuel from './views/fuel.js';
 import * as progress from './views/progress.js';
 import * as settings from './views/settings.js';
 import * as onboarding from './views/onboarding.js';
+import { privacyActions, privacyChanges } from './views/privacy.js';
 
 const ROUTES = {
   today: { view: today, title: 'Today', icon: 'home', tab: 'Today' },
@@ -34,6 +35,7 @@ const ACTIONS = {
   ...move.moveActions,
   ...settings.settingsActions,
   ...coachView.coachActions,
+  ...privacyActions,
   install: async () => {
     if (!installPrompt) return;
     installPrompt.prompt();
@@ -120,7 +122,7 @@ function noteActivity(name, el) {
   if (['pouch-log', 'pouch-done', 'craving-start', 'craving-saved'].includes(name)) refreshUrgeAlert();
 }
 
-const CHANGES = { ...taper.changes, ...fuel.changes, ...settings.changes, ...coachView.coachChanges };
+const CHANGES = { ...taper.changes, ...fuel.changes, ...settings.changes, ...coachView.coachChanges, ...privacyChanges };
 const SUBMITS = { ...move.submits, ...onboarding.submits };
 
 const root = document.getElementById('root');

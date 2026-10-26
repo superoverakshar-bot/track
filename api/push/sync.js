@@ -4,8 +4,8 @@
 import { cronFor, SCHEDULED_KEYS } from '../../public/js/reminders.js';
 import { isValidTime } from '../../public/js/plan.js';
 import {
-  HttpError, checkAccess, deliverUrl, handle, json, qstash, readJson, requirePush, scheduleId,
-  validContext, validSubscription, validTz, validUid,
+  HttpError, checkAccess, deliverUrl, handle, json, ownerOf, qstash, rateLimit, readJson, requirePush, scheduleId,
+  validContext, validSubscription, validTz,
 } from '../../lib/server.js';
 
 export default {
@@ -13,9 +13,10 @@ export default {
     if (request.method !== 'POST') throw new HttpError(405, 'POST only');
     requirePush();
     checkAccess(request);
+    rateLimit(request, 'push', 60, 3600000);
     const body = await readJson(request);
-    const uid = validUid(body.uid);
     const sub = validSubscription(body.subscription);
+    const owner = ownerOf(sub);
     const tz = validTz(body.tz);
     const ctx = validContext(body.ctx, tz);
 
@@ -30,14 +31,14 @@ export default {
     const client = qstash();
     const destination = deliverUrl(request);
     const jobs = SCHEDULED_KEYS.map((key) => {
-      const id = scheduleId(uid, key);
+      const id = scheduleId(owner, key);
       const r = wanted.get(key);
       if (!r) return client.schedules.delete(id).catch(() => null);
       return client.schedules.create({
         scheduleId: id,
         destination,
         cron: cronFor(r.time, r.days, tz),
-        body: JSON.stringify({ v: 1, uid, key, sub, ctx }),
+        body: JSON.stringify({ v: 2, owner, key, sub, ctx }),
         headers: { 'Content-Type': 'application/json' },
         retries: 2,
       });
@@ -45,7 +46,7 @@ export default {
     const results = await Promise.allSettled(jobs);
     const failed = results.filter((x) => x.status === 'rejected');
     if (failed.length) {
-      console.error('schedule sync failures', failed.map((f) => String(f.reason)));
+      console.error('schedule sync failures', failed.map((f) => f.reason?.status || f.reason?.name || 'error')); // no bodies: they hold the subscription
       throw new HttpError(502, `QStash rejected ${failed.length} schedule(s): ${String(failed[0].reason?.message || failed[0].reason)}`);
     }
     return json({ ok: true, scheduled: wanted.size, destination });

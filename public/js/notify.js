@@ -105,7 +105,7 @@ async function subscription() {
 
 function basePayload(sub) {
   const s = getState();
-  return { uid: s.uid, subscription: sub.toJSON(), tz: tz(), ctx: messageContext(s.settings, tz()) };
+  return { subscription: sub.toJSON(), tz: tz(), ctx: messageContext(s.settings, tz()) };
 }
 
 function hash(str) {
@@ -162,9 +162,10 @@ export async function enableNotifications() {
 export async function disableNotifications() {
   const s = getState();
   if (s.notify.push) {
-    await api('unsubscribe', { uid: s.uid }).catch(() => null);
     try {
       const sub = await (reg || (await navigator.serviceWorker.ready)).pushManager.getSubscription();
+      // The server only removes schedules for a subscription you hold, so tell it before dropping it.
+      if (sub) await api('unsubscribe', { subscription: sub.toJSON() }).catch(() => null);
       await sub?.unsubscribe();
     } catch { /* already gone */ }
   }
@@ -217,7 +218,7 @@ export function cancelOnce(key) {
   const id = getState().notify.once[key];
   if (id) {
     update((st) => { delete st.notify.once[key]; });
-    api('cancel', { messageId: id }).catch(() => null);
+    subscription().then((sub) => api('cancel', { messageId: id, subscription: sub.toJSON() })).catch(() => null);
   }
   scheduleLocal();
 }

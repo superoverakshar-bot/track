@@ -1,11 +1,13 @@
 import { WEEKDAYS, capSteps, dinnerCutoff, isValidKey, isValidTime } from '../plan.js';
 import { TUNABLE, resolveReminders } from '../reminders.js';
 import { pin } from '../autopilot.js';
+import { privacySection } from './privacy.js';
 import {
   disableNotifications, enableNotifications, getConfig, mode, permission, sendTest, settingsChanged, support, syncPush,
 } from '../notify.js';
 import { exportJson, getState, importJson, resetAll, update } from '../store.js';
-import { confirmDialog, esc, icon, toast } from '../ui.js';
+import { confirmDialog, esc, icon, promptPassword, toast } from '../ui.js';
+import { decryptBackup, encryptBackup, isEncryptedBackup } from '../backup.js';
 import { cardHead } from './parts.js';
 import { generateVapidKeys } from '../vapid.js';
 
@@ -129,15 +131,30 @@ function appearanceSection(s) {
 }
 
 function dataSection() {
-  return `<section class="card">
+  const last = getState().lastBackupAt;
+  const stale = !last || Date.now() - last > 7 * 86400000;
+  return `<section class="card" id="data">
     ${cardHead('Your data', null, 'Stored on this device')}
-    <p class="small muted">Everything stays in this browser. Export a backup now and then — and to move to a new phone.</p>
+    <div class="banner ${stale ? 'warn' : 'info'}"><div class="grow"><b>Only in this browser</b><span class="small">Your logs aren't stored anywhere else yet. Clearing site data, deleting the home-screen app, or iOS removing data from a web app you haven't opened for a while can erase them for good. Export a backup regularly.</span></div></div>
+    <p class="small" style="margin-top:10px">${last ? `Last backup: ${new Date(last).toLocaleString()}` : 'No backup exported from this device yet.'}</p>
     <div class="btn-row" style="margin-top:12px">
-      <button class="btn" data-action="export">${icon('download')}Export</button>
+      <button class="btn primary" data-action="export-encrypted">${icon('download')}Encrypted backup</button>
+      <button class="btn" data-action="export">${icon('download')}Plain backup</button>
       <label class="btn">${icon('upload')}Import<input type="file" accept="application/json,.json" data-change="import" hidden></label>
       <button class="btn danger" data-action="reset">${icon('trash')}Reset</button>
     </div>
+    <p class="tiny muted" style="margin-top:8px">The encrypted backup needs its password to open; without it the file can't be recovered. The plain backup is readable by anyone who gets the file, including private stamina logs. Neither contains this device's notification setup or access code.</p>
   </section>`;
+}
+
+function download(text, name) {
+  const blob = new Blob([text], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  update((s) => { s.lastBackupAt = Date.now(); });
 }
 
 export function render() {
@@ -145,6 +162,7 @@ export function render() {
   return `<div class="stack">
     ${motivationSection(s)}
     ${notifySection(s)}
+    ${privacySection()}
     ${planSection(s)}
     ${scheduleSection(s)}
     ${appearanceSection(s)}
@@ -193,7 +211,14 @@ export const changes = {
     const file = el.files?.[0];
     if (!file) return;
     try {
-      importJson(await file.text());
+      let text = await file.text();
+      el.value = '';
+      if (isEncryptedBackup(text)) {
+        const password = await promptPassword({ title: 'Open encrypted backup', okLabel: 'Open' });
+        if (password == null) return;
+        text = await decryptBackup(text, password);
+      }
+      importJson(text);
       changed();
       toast('Backup restored');
     } catch (err) {
@@ -256,13 +281,19 @@ export const settingsActions = {
     }
   },
   'notify-resync': () => syncPush({ force: true }).then(() => toast('Schedules synced')).catch((e) => toast(e.message)),
-  export: () => {
-    const blob = new Blob([exportJson()], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `track-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  export: () => download(exportJson(), `track-backup-${new Date().toISOString().slice(0, 10)}.json`),
+  'export-encrypted': async () => {
+    const password = await promptPassword({
+      title: 'Encrypted backup', confirm: true, okLabel: 'Encrypt and save',
+      html: '<p class="small muted">Choose a password for this file. Track can\'t recover it if you forget it.</p>',
+    });
+    if (password == null) return;
+    try {
+      download(await encryptBackup(exportJson(), password), `track-backup-${new Date().toISOString().slice(0, 10)}.encrypted.json`);
+      toast('Encrypted backup saved');
+    } catch (err) {
+      toast(err.message);
+    }
   },
   reset: async () => {
     const ok = await confirmDialog('Reset everything?', '<p class="muted">This deletes all logs and settings on this device. Export a backup first if you might want them.</p>', 'Delete all', 'danger');

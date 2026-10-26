@@ -25,6 +25,13 @@ All logs stay on your device (`localStorage`). Use **Settings → Export** for b
 
 ---
 
+## Security and privacy
+
+- **AI only with consent.** Nothing is sent to an AI service until you agree on the Coach tab; private stamina data needs a separate yes. Settings → Privacy & AI consent shows each category, when you allowed it, and lets you turn it off. The server refuses AI calls without consent and strips private fields you haven't allowed.
+- **Locked server.** Every Vercel deployment refuses AI and push calls until `PUSH_ACCESS_CODE` (12+ characters) is set; the app sends it from Settings → Notifications → Access code. Calls are rate-limited, and push schedules belong to the device's own push subscription.
+- **Your data stays in this browser** until accounts arrive (Track 2.0 phase 1). Export a backup regularly: Settings → Your data → Encrypted backup.
+- Strict Content Security Policy and browser security headers (`vercel.json`). Release notes, test evidence and rollback steps: [`docs/releases/2.0.1.md`](docs/releases/2.0.1.md).
+
 ## Deploy to Vercel
 
 1. Sign in at [vercel.com](https://vercel.com) with GitHub (the free Hobby plan is enough).
@@ -72,7 +79,7 @@ Redeploy the **production** deployment. QStash calls back to your production URL
 
 | Variable | Purpose |
 |---|---|
-| `PUSH_ACCESS_CODE` | If set, the app must enter this code (Settings → Notifications) before it can create schedules or use the AI coach. This stops strangers who find your URL from spending your QStash quota or OpenRouter credits. Recommended once the AI coach is on. |
+| `PUSH_ACCESS_CODE` | **Required on Vercel** (12+ characters). The app must send this code (Settings → Notifications) before it can create schedules or use the AI coach; without it those endpoints refuse every call. |
 | `APP_URL` | Overrides the public base URL QStash calls back to (defaults to the Vercel production URL). Set it when you use a custom domain. |
 
 If something isn't set, **Settings → Notifications** lists the missing variables.
@@ -151,7 +158,8 @@ A tracking day runs from 04:00 to 03:59, so a late night counts toward the day y
 ```bash
 npm install
 npm run dev      # http://localhost:3000 (serves public/ and runs api/ like Vercel)
-npm test         # plan logic, coach rules, reminder copy, push + AI handlers
+npm test         # plan logic, coach rules, reminder copy, push + AI handlers, privacy, backups
+npm run e2e      # browser journeys under the production CSP (needs Playwright's Chromium)
 ```
 
 Put env vars in `.env.local` (see `.env.example`) to test push locally. QStash can't call `localhost`, so set `APP_URL` to a public tunnel URL for end-to-end tests.

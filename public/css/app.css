@@ -391,6 +391,8 @@ code { font-size: 13px; background: var(--surface-2); padding: 1px 6px; border-r
   background: var(--warn-soft); color: var(--ink);
 }
 .banner.info { background: var(--grad-soft); }
+.banner.warn { background: color-mix(in srgb, var(--warn) 18%, var(--surface)); }
+.bad-text { color: var(--bad); font-weight: 700; }
 .banner .grow { flex: 1; min-width: 0; }
 .banner b { display: block; }
 .banner > .i { width: 24px; height: 24px; }
@@ -543,6 +545,9 @@ details.more summary { cursor: pointer; font-weight: 700; font-size: 14px; color
 .fc { font-size: 13px; font-weight: 700; padding: 5px 10px; border-radius: 999px; font-variant-numeric: tabular-nums; }
 .fc.fits { background: color-mix(in srgb, var(--good) 14%, transparent); }
 .fc.guard { background: color-mix(in srgb, var(--warn, #d97706) 18%, transparent); }
+.consent-checks { display: grid; gap: 10px; margin-top: 12px; font-size: 14px; }
+.consent-checks label { display: flex; gap: 10px; align-items: flex-start; }
+.consent-checks input { margin-top: 3px; flex: none; }
 .ap-head { align-items: flex-start; gap: 12px; }
 .ap-head .grow { display: grid; gap: 4px; }
 .ap-status { margin-top: 10px; font-weight: 700; }
