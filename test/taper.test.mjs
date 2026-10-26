@@ -22,14 +22,32 @@ test('fresh day: first window at lock end, cap spread to an hour before bed', ()
   assert.equal(w.spacingMin, Math.round(840 / 17)); // 08:00 → 22:00 over 17 gaps
 });
 
-test('after a pouch the rest of the cap is spread evenly', () => {
+test('after a pouch the rest of the cap is spread evenly from when it came out', () => {
   const rec = emptyDay();
-  rec.pouches = [{ ts: at(today, '08:10'), flags: [] }];
+  rec.pouches = [{ ts: at(today, '08:10'), flags: [] }]; // no Done tap: out after the usual 20 min
   const w = nextWindow(today, rec, at(today, '08:30'));
   assert.equal(w.remaining, 17);
-  assert.equal(w.spacingMin, Math.round(830 / 17));
-  assert.equal(w.next, at(today, '08:10') + w.spacingMin * 60000);
+  assert.equal(w.spacingMin, Math.round(810 / 17)); // 08:30 → 22:00
+  assert.equal(w.next, at(today, '08:30') + w.spacingMin * 60000);
   assert.equal(w.open, false);
+  rec.pouches[0].endTs = at(today, '08:25'); // Done tapped at 08:25
+  assert.equal(nextWindow(today, rec, at(today, '08:30')).next, at(today, '08:25') + Math.round(815 / 17) * 60000);
+});
+
+test('a pouch in the mouth, and the 2-hour gap counts from when it came out', async () => {
+  const { pouchIn, pouchEnd, gapEnd } = await import('../public/js/logic.js');
+  const rec = emptyDay();
+  rec.pouches = [{ ts: at(today, '10:00'), flags: [] }];
+  assert.ok(pouchIn(rec, at(today, '10:15')));
+  assert.equal(pouchIn(rec, at(today, '10:25')), null); // past the usual 20 min
+  update((s) => { s.settings.pouchMin = 15; });
+  assert.equal(pouchEnd(rec.pouches[0]), at(today, '10:15'));
+  update((s) => { s.settings.pouchMin = 20; });
+  setStart(35); // day 36: gap rule on
+  rec.pouches[0].endTs = at(today, '10:18');
+  assert.equal(gapEnd(today, rec), at(today, '12:18'));
+  assert.equal(pouchIn(rec, at(today, '10:19')), null);
+  setStart(0);
 });
 
 test('cap reached, bedtime and gap rule', () => {

@@ -30,6 +30,7 @@ function motivationSection(s) {
       <label class="field"><span>My why</span>
         <textarea class="input" id="set-why" data-change="setting" data-key="why" maxlength="140" rows="2" placeholder="e.g. More energy for my family, a clear head at work, feeling strong again">${esc(s.why)}</textarea>
         <small>Shown on Today and during every urge buffer.</small></label>
+      ${field('Minutes you keep a pouch in', input('pouchMin', 'number', s.pouchMin, 'min="3" max="60" step="1" inputmode="numeric"'), 'The next-pouch time counts from when it comes out. Tap "It\'s out" and the app learns this for you.')}
       ${field('Price per pouch (₹)', input('pricePerPouch', 'number', s.pricePerPouch || '', 'min="0" max="1000" step="0.5" inputmode="decimal" placeholder="e.g. 10"'), 'Turns avoided pouches into money saved.')}
     </div>
   </section>`;
@@ -152,7 +153,7 @@ export function render() {
   </div>`;
 }
 
-const NUM = { baseline: [0, 100, 1], waterTargetL: [1, 6, 0.25], alcoholMax: [0, 10, 1], pricePerPouch: [0, 1000, 0.5] };
+const NUM = { baseline: [0, 100, 1], waterTargetL: [1, 6, 0.25], alcoholMax: [0, 10, 1], pricePerPouch: [0, 1000, 0.5], pouchMin: [3, 60, 1] };
 
 function changed() {
   settingsChanged();

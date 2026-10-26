@@ -2,7 +2,7 @@ import { PROGRAM_DAYS, dayKeyAt } from '../plan.js';
 import { TUNABLE } from '../reminders.js';
 import { avoidedPouches, coach } from '../coach.js';
 import { lineOfTheDay, partOfDay } from '../joy.js';
-import { gapEnd, morningLockEnd, planFor } from '../logic.js';
+import { gapEnd, morningLockEnd, planFor, pouchEnd, pouchIn } from '../logic.js';
 import { nextWindow, taperProgress } from '../taper.js';
 import { mode as notifyMode } from '../notify.js';
 import { emptyDay, getState, peekDay, todayKey } from '../store.js';
@@ -16,6 +16,11 @@ function taperStatus(key, rec, plan, now) {
   const lockEnd = morningLockEnd(key, rec);
   const g = gapEnd(key, rec);
   const w = nextWindow(key, rec, now);
+  const inMouth = pouchIn(rec, now);
+  if (inMouth) {
+    const after = w.next ? ` Next fits ${clock(w.next)}.` : '';
+    return { icon: '🟢', text: `Pouch in · take it out by ${clock(pouchEnd(inMouth))}.${after}`, until: pouchEnd(inMouth), out: true };
+  }
   if (plan.cap === 0 && used === 0 && plan.day >= 1) return { icon: '🕊️', text: 'Pouch-free day. Every urge gets the buffer.' };
   if (w.reason === 'cap') return used > plan.cap ? { icon: '⚠️', text: `${used - plan.cap} over cap. Buffer every urge now.` } : { icon: '🛑', text: 'Cap reached. Buffer every urge from here.' };
   if (now < lockEnd) return { icon: '🔒', text: `Morning lock until ${clock(lockEnd)}`, until: lockEnd };
@@ -56,7 +61,7 @@ function heroCard(key, rec, now) {
     </div>
     <div class="hero-actions">
       <button class="btn white" data-action="craving-start" ${st.craving ? 'disabled' : ''}>😮‍💨 I have an urge</button>
-      <button class="btn glass" data-action="pouch-log">${icon('plus')}Log pouch</button>
+      ${status.out ? '<button class="btn glass" data-action="pouch-done">✓ It\'s out</button>' : `<button class="btn glass" data-action="pouch-log">${icon('plus')}Log pouch</button>`}
     </div>
     ${s.why ? `<p class="why">💜 <b>My why:</b> ${esc(s.why)}</p>` : '<p class="why">💜 <a href="#settings">Add your “why”</a>. It keeps you going when an urge hits.</p>'}
     <div class="hero-stats">

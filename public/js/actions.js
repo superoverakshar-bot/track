@@ -1,6 +1,6 @@
 // User actions, wired to elements via data-action="name".
-import { AUTO_SAVE_MIN, BUFFER_MIN, BUFFER_WATER_ML, CIRCUIT_ROUND, GAP_MIN, MORNING_LOCK_MIN, dayKeyAt } from './plan.js';
-import { FLAG_TEXT, bufferEnds, cravingState, planFor, pouchFlags } from './logic.js';
+import { AUTO_SAVE_MIN, BUFFER_MIN, BUFFER_WATER_ML, CIRCUIT_ROUND, MORNING_LOCK_MIN, dayKeyAt } from './plan.js';
+import { FLAG_TEXT, bufferEnds, cravingState, gapEnd, planFor, pouchEnd, pouchFlags, pouchIn } from './logic.js';
 import { TRIGGERS, nextWindow } from './taper.js';
 import { cancelOnce, scheduleOnce } from './notify.js';
 import { dayRecord, getState, logEvent, todayKey, update } from './store.js';
@@ -65,15 +65,42 @@ export async function logPouch() {
   }
   const plan = planFor(key);
   update((s) => {
-    dayRecord(key).pouches.push({ ts: now, flags, ...(trigger ? { trigger } : {}) });
+    const d = dayRecord(key);
+    const prev = pouchIn(d, now);
+    if (prev) prev.endTs = now; // a new one means the last one is out
+    d.pouches.push({ ts: now, flags, ...(trigger ? { trigger } : {}) });
     s.craving = null;
   });
   if (crav) cancelOnce('craving');
-  const after = nextWindow(key, dayRecord(key), now);
-  const used = dayRecord(key).pouches.length;
-  if (plan.gapRule) scheduleOnce('gap', now + GAP_MIN * MIN, { remaining: Math.max(0, plan.cap - used) });
+  const after = nextWindow(key, rec, now);
+  const used = rec.pouches.length;
+  const out = pouchEnd(rec.pouches[used - 1]);
+  scheduleOnce('pouchOut', out, after.next ? { next: clock(after.next) } : {});
+  if (plan.gapRule) scheduleOnce('gap', gapEnd(key, rec), { remaining: Math.max(0, plan.cap - used) });
   const nextText = after.next ? ` · next fits ${clock(after.next)}` : after.reason === 'cap' ? ' · that was the last one today' : '';
-  toast(`Pouch logged · ${used} of ${plan.cap}${nextText}`);
+  toast(`Pouch logged · ${used} of ${plan.cap}. Tap Done when it's out${nextText}`);
+}
+
+// You took the pouch out: the gap and pacing now count from here.
+export function pouchDone() {
+  const key = todayKey();
+  const now = Date.now();
+  const p = pouchIn(dayRecord(key), now);
+  if (!p) return;
+  update((s) => {
+    p.endTs = now;
+    // Learn how long you usually keep one in (median of your last Done taps).
+    const mins = Object.values(s.days).flatMap((d) => d.pouches).filter((x) => x.endTs).slice(-15)
+      .map((x) => (x.endTs - x.ts) / MIN).filter((m) => m >= 2 && m <= 90).sort((a, b) => a - b);
+    if (mins.length >= 3) s.settings.pouchMin = Math.min(60, Math.max(3, Math.round(mins[Math.floor(mins.length / 2)])));
+  });
+  cancelOnce('pouchOut');
+  const rec = dayRecord(key);
+  const plan = planFor(key);
+  if (plan.gapRule) scheduleOnce('gap', gapEnd(key, rec), { remaining: Math.max(0, plan.cap - rec.pouches.length) });
+  const w = nextWindow(key, rec, now);
+  const next = w.next ? `Next one fits at ${clock(w.next)}.` : w.reason === 'cap' ? 'Cap reached: that was the last one today.' : 'Done for today.';
+  toast(`Out after ${Math.max(1, Math.round((now - p.ts) / MIN))} min ✓ Rinse and drink water. ${next}`);
 }
 
 function setDay(fn) {
@@ -127,6 +154,7 @@ export const actions = {
     cancelOnce('craving');
   },
   'pouch-log': logPouch,
+  'pouch-done': pouchDone,
   'pouch-del': async (el) => {
     const i = Number(el.dataset.i);
     const ok = await dialog({ title: 'Remove this pouch log?', buttons: [{ label: 'Keep', value: false }, { label: 'Remove', value: true, cls: 'danger' }] });

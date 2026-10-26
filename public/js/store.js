@@ -21,6 +21,7 @@ export function defaultSettings() {
     focusAreas: ['quit', 'energy', 'focus', 'stamina'],
     why: '', // personal reason, shown on Today and during urges
     pricePerPouch: 0, // ₹, for money saved
+    pouchMin: 20, // how long you usually keep a pouch in; learned from your Done taps
     aiPrivate: true,
     pushCode: '',
     onboarded: false,
@@ -30,7 +31,7 @@ export function defaultSettings() {
 export function emptyDay() {
   return {
     wakeAt: null,
-    pouches: [], // [{ ts, flags: [], trigger? }]
+    pouches: [], // [{ ts, flags: [], trigger?, endTs? }] endTs = when it came out
     saved: 0,
     urges: [], // beaten urges [{ ts, trigger? }]
     waterMl: 0,

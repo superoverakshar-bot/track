@@ -1,5 +1,5 @@
 import { PROGRAM_DAYS, WALK_MIN, WALK_PHASES, walkSegments } from './plan.js';
-import { planFor, scoreFor } from './logic.js';
+import { planFor, pouchIn, scoreFor } from './logic.js';
 import { badges } from './achievements.js';
 import { celebrate } from './joy.js';
 import { nextWindow, pouchFreeHours } from './taper.js';
@@ -45,7 +45,7 @@ const ACTIONS = {
 // What a tap tells us about your routine. The autopilot learns your real times from these.
 const EVENT_KIND = {
   wake: 'wake', 'craving-start': 'urge', 'craving-saved': 'urge_beaten', 'pouch-log': null,
-  'water-add': 'water', 'craving-water': 'water', 'drink-water': 'water', 'drink-add': 'drink',
+  'pouch-done': 'pouch_out', 'water-add': 'water', 'craving-water': 'water', 'drink-water': 'water', 'drink-add': 'drink',
   'dinner-now': 'dinner', 'rep-add': 'reps', 'hold-start': 'hold', 'hold-add': 'hold', 'round-done': 'circuit',
   'walk-start': 'walk_start', 'walk-end': 'walk_end', checkin: 'checkin', 'kegel-add': 'kegel',
   toggle: (el) => ({ microManual: 'microset' })[el.dataset.field] || el.dataset.field,
@@ -62,7 +62,8 @@ const QUICK_EXTRA = {
   lunch: { label: '🥗 Sprouts + protein done', action: 'check', data: { id: 'protein' } },
   shield: { label: '🛡️ 4 PM snack done', action: 'check', data: { id: 'snack' } },
   dinner: { label: '🍽️ Dinner done', action: 'dinner-now' },
-  craving: { label: '✅ Urge passed', action: 'craving-saved', needsCraving: true },
+  craving: { label: '✅ Urge passed', action: 'craving-saved', when: () => getState().craving },
+  pouchOut: { label: "✓ It's out", action: 'pouch-done', when: () => pouchIn(peekDay(todayKey())) },
   microset: { label: '💪 Log reps', action: 'nav', data: { to: '#move' } },
   walk: { label: '🏃 Start 30-min timer', action: 'nav', data: { to: '#move' } },
   circuit: { label: '🏋️ Open circuit', action: 'nav', data: { to: '#move' } },
@@ -81,7 +82,7 @@ async function quickSheet(tag) {
   const plan = planFor(key);
   const w = nextWindow(key, rec, Date.now());
   const craving = getState().craving;
-  const extra = QUICK_EXTRA[tag] && (!QUICK_EXTRA[tag].needsCraving || craving) ? QUICK_EXTRA[tag] : null;
+  const extra = QUICK_EXTRA[tag] && (!QUICK_EXTRA[tag].when || QUICK_EXTRA[tag].when()) ? QUICK_EXTRA[tag] : null;
   const status = `${rec.pouches.length} of ${plan.cap} pouches today${w.reason === 'cap' ? ' · cap reached' : w.next && w.next > Date.now() ? ` · next fits ${clock(w.next)}` : ''}`;
   const buttons = [
     ...(extra ? [{ label: extra.label, value: 'extra', cls: 'block good' }] : []),

@@ -66,7 +66,7 @@ function logCard(key, rec) {
         : `Pacing plan: ${plural(w.remaining, 'pouch', 'pouches')} left, at most one every ${fmtGap(w.spacingMin)}, last call ${clock(w.lastCall)}. Next fits at ${clock(w.next)}.`;
   const items = rec.pouches.map((p, i) => {
     const t = triggerById(p.trigger);
-    return `<div class="log-item"><span class="when">${clock(p.ts)}</span>
+    return `<div class="log-item"><span class="when">${clock(p.ts)}${p.endTs ? `<small class="muted"> · ${Math.max(1, Math.round((p.endTs - p.ts) / 60000))} min</small>` : ''}</span>
     <span class="flags">${t ? `<span class="badge">${t.emoji} ${esc(t.label)}</span>` : ''}${p.flags.length ? p.flags.map((f) => `<span class="badge bad" title="${esc(FLAG_TEXT[f])}">${FLAG_SHORT[f]}</span>`).join('') : '<span class="badge good">Within rules</span>'}</span>
     <button class="del" data-action="pouch-del" data-i="${i}" aria-label="Remove pouch logged at ${clock(p.ts)}">${icon('trash')}</button></div>`;
   }).join('');

@@ -1,6 +1,6 @@
 // Tansen taper engine: pacing windows, triggers and taper progress.
 import { GAP_MIN, addDays, tsForDayTime } from './plan.js';
-import { gapEnd, morningLockEnd, planFor } from './logic.js';
+import { gapEnd, lastPouchEnd, morningLockEnd, planFor } from './logic.js';
 import { getState, peekDay, todayKey } from './store.js';
 
 const MIN = 60000;
@@ -49,8 +49,9 @@ export function lastCallTs(key) {
   return tsForDayTime(key, getState().settings.sleepTime) - LAST_CALL_MIN * MIN;
 }
 
-// When the next pouch fits the plan: spread what's left of the cap evenly
-// until an hour before bed, never inside the morning lock or the gap rule.
+// When the next pouch fits the plan: spread what's left of the cap evenly from
+// when the last one came out until an hour before bed, never inside the morning
+// lock or the gap rule.
 export function nextWindow(key, rec, now = Date.now()) {
   const plan = planFor(key);
   const used = rec?.pouches?.length || 0;
@@ -58,7 +59,7 @@ export function nextWindow(key, rec, now = Date.now()) {
   const lockEnd = morningLockEnd(key, rec);
   const lastCall = lastCallTs(key);
   if (remaining === 0) return { remaining, next: null, reason: 'cap', lastCall };
-  const last = used ? Math.max(...rec.pouches.map((p) => p.ts)) : null;
+  const last = used ? lastPouchEnd(rec) : null; // pacing counts from when the last pouch came out
   const from = last ?? lockEnd;
   // From the last pouch: `remaining` gaps. From the lock: the first pouch sits at lockEnd, so one fewer.
   const gaps = used ? remaining : Math.max(1, remaining - 1);

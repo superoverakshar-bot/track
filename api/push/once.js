@@ -1,5 +1,5 @@
 // POST /api/push/once — a one-off push at an exact time (craving buffer end,
-// morning lock end, 2-hour gap end). Optionally cancels the message it replaces.
+// morning lock end, 2-hour gap end, time to take a pouch out). Optionally cancels the message it replaces.
 import { ONCE_KEYS } from '../../public/js/reminders.js';
 import {
   HttpError, checkAccess, deliverUrl, handle, json, qstash, readJson, requirePush,
@@ -22,6 +22,7 @@ export default {
     if (!Number.isFinite(at) || at < now - 60000 || at > now + 24 * 3600000) throw new HttpError(400, 'Invalid time');
     const data = {};
     if (Number.isInteger(body.data?.remaining)) data.remaining = body.data.remaining;
+    if (/^\d\d:\d\d$/.test(body.data?.next || '')) data.next = body.data.next;
 
     const client = qstash();
     if (typeof body.replace === 'string' && body.replace) {

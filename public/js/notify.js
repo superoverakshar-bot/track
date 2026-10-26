@@ -5,7 +5,7 @@
 import { addDays, tsForDayTime, weekday } from './plan.js';
 import { buildMessage, messageContext, resolveReminders } from './reminders.js';
 import { getState, peekDay, subscribe, todayKey, update } from './store.js';
-import { gapEnd, morningLockEnd, planFor } from './logic.js';
+import { gapEnd, morningLockEnd, planFor, pouchEnd, pouchIn } from './logic.js';
 import { postJson } from './api.js';
 import { smartLine, smartSnapshot } from './coach.js';
 
@@ -268,6 +268,8 @@ export function scheduleLocal() {
   if (rec?.wakeAt && local('lockEnd')) events.push({ key: 'lockEnd', at: morningLockEnd(key, rec) });
   const g = gapEnd(key, rec);
   if (g && local('gap')) events.push({ key: 'gap', at: g, data: { remaining: Math.max(0, planFor(key).cap - rec.pouches.length) } });
+  const inMouth = pouchIn(rec, now);
+  if (inMouth && local('pouchOut')) events.push({ key: 'pouchOut', at: pouchEnd(inMouth) });
 
   for (const e of events) {
     const delay = e.at - now;

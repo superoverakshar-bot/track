@@ -36,8 +36,24 @@ export function lastPouch(rec) {
   return rec?.pouches?.length ? rec.pouches[rec.pouches.length - 1].ts : null;
 }
 
+// When a pouch came out: your "Done" tap, or start + your usual time with one in.
+export function pouchEnd(p) {
+  return p.endTs ?? p.ts + (getState().settings.pouchMin || 20) * MIN;
+}
+
+export function lastPouchEnd(rec) {
+  return rec?.pouches?.length ? Math.max(...rec.pouches.map(pouchEnd)) : null;
+}
+
+// The pouch you have in right now, if any.
+export function pouchIn(rec, now = Date.now()) {
+  const p = rec?.pouches?.length ? rec.pouches[rec.pouches.length - 1] : null;
+  return p && !p.endTs && now < pouchEnd(p) ? p : null;
+}
+
+// Gaps count from when the last pouch came out, not when it went in.
 export function gapEnd(key, rec) {
-  const last = lastPouch(rec);
+  const last = lastPouchEnd(rec);
   return planFor(key).gapRule && last ? last + GAP_MIN * MIN : null;
 }
 
@@ -47,7 +63,7 @@ export function cutoffTs(key) {
 
 export const FLAG_TEXT = {
   morning: 'Inside the 90-min morning lock',
-  gap: 'Less than 2 hours since the last pouch',
+  gap: 'Less than 2 hours since the last pouch came out',
   cap: "Over today's cap",
   nobuffer: 'Skipped the 15-min urge buffer',
 };

@@ -1,5 +1,5 @@
 // Service worker: offline app shell (network-first, cache fallback) + push display.
-const CACHE = 'track-v5';
+const CACHE = 'track-v6';
 const SMART = 'track-smart'; // reminder text written by the app (see coach.js smartSnapshot)
 const SHELL = [
   '/', '/index.html', '/manifest.webmanifest', '/css/app.css',

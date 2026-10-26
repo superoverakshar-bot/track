@@ -113,7 +113,7 @@ export function setTunable(settings, target, value) {
 }
 
 export const SCHEDULED_KEYS = REMINDERS.map((r) => r.key);
-export const ONCE_KEYS = ['craving', 'lockEnd', 'gap'];
+export const ONCE_KEYS = ['craving', 'lockEnd', 'gap', 'pouchOut'];
 export const ALL_KEYS = [...SCHEDULED_KEYS, ...ONCE_KEYS, 'test'];
 
 function anchorTime(anchor, s) {
@@ -212,6 +212,8 @@ export function buildMessage(key, ctx, now = Date.now(), data = {}) {
       return msg('📝 Evening check-in', `Log today's pouches, water and reps. ${capText}.`);
     case 'craving':
       return msg(`⏱️ ${BUFFER_MIN}-minute buffer done`, 'Urge gone? Log it as a saved pouch 💪 Still there? Log honestly — the data helps.');
+    case 'pouchOut':
+      return msg('⏱️ Time to take it out', `Spit it out, rinse and drink a glass of water. Tap Done in the app${/^\d\d:\d\d$/.test(data.next || '') ? `; the next one fits at ${data.next}` : ''}.`);
     case 'lockEnd':
       return msg('🔓 Morning oxygen window complete', `90 minutes done. ${capText} — stay under it.`);
     case 'gap': {
