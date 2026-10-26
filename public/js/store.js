@@ -1,11 +1,11 @@
 // App state, persisted to localStorage. Everything lives on this device.
-import { dayKeyAt, isValidKey, toKey } from './plan.js';
+import { dayKeyAt, isValidKey } from './plan.js';
 
 const KEY = 'track.v1';
 
 export function defaultSettings() {
   return {
-    startDate: toKey(new Date()),
+    startDate: dayKeyAt(Date.now()), // the tracking day, so a 2 AM setup starts today, not tomorrow
     baseline: 20,
     wakeTime: '06:30',
     sleepTime: '23:00',

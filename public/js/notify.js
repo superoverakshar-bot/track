@@ -199,8 +199,13 @@ export function cancelOnce(key) {
 
 export async function show(m) {
   const r = reg || (await navigator.serviceWorker?.ready);
-  const opts = { body: m.body, tag: m.tag, renotify: true, icon: '/icons/icon-192.png', badge: '/icons/badge-96.png', data: { url: m.url } };
+  const opts = {
+    body: m.body, tag: m.tag, renotify: true, icon: '/icons/icon-192.png', badge: '/icons/badge-96.png',
+    data: { url: m.url, tag: m.tag },
+    actions: [{ action: 'urge', title: '😮‍💨 Urge' }, { action: 'pouch', title: 'Log pouch' }], // same as sw.js
+  };
   if (r) return r.showNotification(m.title, opts);
+  delete opts.actions; // only service-worker notifications can have buttons
   return new Notification(m.title, opts);
 }
 

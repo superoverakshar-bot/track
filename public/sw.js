@@ -1,5 +1,5 @@
 // Service worker: offline app shell (network-first, cache fallback) + push display.
-const CACHE = 'track-v4';
+const CACHE = 'track-v5';
 const SMART = 'track-smart'; // reminder text written by the app (see coach.js smartSnapshot)
 const SHELL = [
   '/', '/index.html', '/manifest.webmanifest', '/css/app.css',
@@ -71,14 +71,25 @@ self.addEventListener('push', (event) => {
       icon: '/icons/icon-192.png',
       badge: '/icons/badge-96.png',
       vibrate: [80, 40, 80],
-      data: { url: m.url || '/#today' },
+      data: { url: m.url || '/#today', tag: m.tag },
+      actions: ACTIONS, // buttons on Android and desktop; iPhone ignores them and opens the quick-log sheet instead
     });
   })());
 });
 
+// Tapping a button logs straight away; tapping the notification opens a quick-log
+// sheet for that reminder (on iPhone, where buttons aren't shown, that's two taps).
+const ACTIONS = [{ action: 'urge', title: '😮‍💨 Urge' }, { action: 'pouch', title: 'Log pouch' }];
+
+function clickUrl(action, data = {}) {
+  if (action === 'urge' || action === 'pouch') return `/#today?do=${action}`;
+  const url = data.url || '/#today';
+  return data.tag && data.tag !== 'test' ? `${url}?quick=${encodeURIComponent(data.tag)}` : url;
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || '/#today';
+  const url = clickUrl(event.action, event.notification.data);
   event.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const client = all.find((c) => new URL(c.url).origin === self.location.origin);

@@ -17,6 +17,8 @@ An installable web app (PWA) for a 90-day health reset, with reminders that arri
 | **Motivation** | A sunrise-themed Today hero with a daily inspiration line, your personal "why", pouches avoided, money saved (₹) and streak. A breathing animation during the urge buffer, confetti for wins (urge beaten, perfect day, personal bests), and 18 achievement badges (including Trigger detective, Trending down and Lock keeper). Pouch-free stretches of 24 h, 48 h, 72 h, 1 week, 2 weeks and 30 days get their own celebration. |
 | **Progress** | Pouches vs. the 90-day cap, 30-minute distance next to pouches per day (same dates, two charts), daily reps, waist trend. |
 
+**Log from notifications.** On Android and desktop, every reminder has **😮‍💨 Urge** and **Log pouch** buttons; long-press the app icon for the same shortcuts. iPhone doesn't show buttons on web-app notifications, so tapping any reminder opens a **Quick log** sheet instead: start the urge buffer, log a pouch (with its trigger), or do that reminder's own job (+500 ml water, snack done, I'm awake…). That's two taps. Lock-screen Live Activities need a native App Store app, which this isn't.
+
 Reminders adapt to what you've logged. If you already had the 4 PM snack, the 4 PM push says "Shield done ✓"; if you're behind on water it tells you by how much; the wake-up push recaps yesterday.
 
 All logs stay on your device (`localStorage`). Use **Settings → Export** for backups or to move to a new phone.

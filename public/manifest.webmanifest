@@ -15,7 +15,8 @@
     { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "Start craving buffer", "short_name": "Craving", "url": "/#today" },
+    { "name": "I have an urge: start the 15-min buffer", "short_name": "Urge", "url": "/#today?do=urge" },
+    { "name": "Log a pouch", "short_name": "Pouch", "url": "/#today?do=pouch" },
     { "name": "30-min walk", "short_name": "Walk", "url": "/#move" }
   ]
 }

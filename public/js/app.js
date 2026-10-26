@@ -2,12 +2,12 @@ import { PROGRAM_DAYS, WALK_MIN, WALK_PHASES, walkSegments } from './plan.js';
 import { planFor, scoreFor } from './logic.js';
 import { badges } from './achievements.js';
 import { celebrate } from './joy.js';
-import { pouchFreeHours } from './taper.js';
+import { nextWindow, pouchFreeHours } from './taper.js';
 import { actions, autoFinishCraving } from './actions.js';
 import { initNotifications, scheduleLocal } from './notify.js';
-import { getState, logEvent, noteOpen, subscribe, todayKey, update } from './store.js';
+import { emptyDay, getState, logEvent, noteOpen, peekDay, subscribe, todayKey, update } from './store.js';
 import * as autopilot from './autopilot.js';
-import { esc, icon, longDate, mmss, since, toast, vibrate } from './ui.js';
+import { clock, dialog, esc, icon, longDate, mmss, since, toast, vibrate } from './ui.js';
 import * as today from './views/today.js';
 import * as coachView from './views/coach.js';
 import * as taper from './views/taper.js';
@@ -52,6 +52,65 @@ const EVENT_KIND = {
   check: (el) => ({ morning: 'morningWater' })[el.dataset.id] || el.dataset.id,
 };
 
+// ---------- quick log from notifications ----------
+
+// Each reminder's own one-tap action on the quick-log sheet.
+const QUICK_EXTRA = {
+  wake: { label: "☀️ I'm awake", action: 'wake' },
+  water1: { label: '💧 +500 ml water', action: 'water-add', data: { ml: '500' } },
+  water2: { label: '💧 +500 ml water', action: 'water-add', data: { ml: '500' } },
+  lunch: { label: '🥗 Sprouts + protein done', action: 'check', data: { id: 'protein' } },
+  shield: { label: '🛡️ 4 PM snack done', action: 'check', data: { id: 'snack' } },
+  dinner: { label: '🍽️ Dinner done', action: 'dinner-now' },
+  craving: { label: '✅ Urge passed', action: 'craving-saved', needsCraving: true },
+  microset: { label: '💪 Log reps', action: 'nav', data: { to: '#move' } },
+  walk: { label: '🏃 Start 30-min timer', action: 'nav', data: { to: '#move' } },
+  circuit: { label: '🏋️ Open circuit', action: 'nav', data: { to: '#move' } },
+  checkin: { label: '📝 Rate today', action: 'nav', data: { to: '#coach' } },
+};
+
+async function run(name, data = {}) {
+  const el = { dataset: { ...data }, disabled: false };
+  await ACTIONS[name]?.(el);
+  noteActivity(name, el);
+}
+
+async function quickSheet(tag) {
+  const key = todayKey();
+  const rec = peekDay(key) || emptyDay();
+  const plan = planFor(key);
+  const w = nextWindow(key, rec, Date.now());
+  const craving = getState().craving;
+  const extra = QUICK_EXTRA[tag] && (!QUICK_EXTRA[tag].needsCraving || craving) ? QUICK_EXTRA[tag] : null;
+  const status = `${rec.pouches.length} of ${plan.cap} pouches today${w.reason === 'cap' ? ' · cap reached' : w.next && w.next > Date.now() ? ` · next fits ${clock(w.next)}` : ''}`;
+  const buttons = [
+    ...(extra ? [{ label: extra.label, value: 'extra', cls: 'block good' }] : []),
+    ...(craving ? [] : [{ label: '😮‍💨 Urge: start 15-min buffer', value: 'urge', cls: 'block primary' }]),
+    { label: '➕ Log pouch', value: 'pouch', cls: 'block' },
+    { label: 'Close', value: null, cls: 'block ghost' },
+  ];
+  const v = await dialog({ title: 'Quick log', html: `<p class="small muted">${esc(status)}</p>`, buttons });
+  if (v === 'extra') await run(extra.action, extra.data);
+  else if (v === 'urge') await run('craving-start');
+  else if (v === 'pouch') await run('pouch-log');
+}
+
+// Links from notifications and home-screen shortcuts: #today?do=urge, #fuel?quick=water1
+async function handleIntent() {
+  const [path, query] = location.hash.replace(/^#/, '').split('?');
+  if (!query) return;
+  history.replaceState(null, '', `#${path || 'today'}`);
+  if (!getState().settings.onboarded) return;
+  const q = new URLSearchParams(query);
+  try {
+    if (q.get('do') === 'urge') { if (!getState().craving) await run('craving-start'); }
+    else if (q.get('do') === 'pouch') await run('pouch-log');
+    else if (q.get('quick')) await quickSheet(q.get('quick'));
+  } catch (err) {
+    toast(err.message || 'Something went wrong');
+  }
+}
+
 function noteActivity(name, el) {
   if (!(name in EVENT_KIND)) return;
   const kind = typeof EVENT_KIND[name] === 'function' ? EVENT_KIND[name](el) : EVENT_KIND[name];
@@ -66,7 +125,7 @@ const root = document.getElementById('root');
 const overlayHost = document.getElementById('overlay');
 
 function route() {
-  const name = location.hash.replace(/^#/, '').split('/')[0];
+  const name = location.hash.replace(/^#/, '').split(/[/?]/)[0];
   return ROUTES[name] ? name : 'today';
 }
 
@@ -363,7 +422,7 @@ root.addEventListener('submit', (e) => {
   autopilot.poke();
 });
 
-window.addEventListener('hashchange', render);
+window.addEventListener('hashchange', () => { render(); handleIntent(); });
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   installPrompt = e;
@@ -387,3 +446,4 @@ subscribe(render);
 render();
 setInterval(tick, 1000);
 initNotifications().then(() => { render(); opened(); }); // server features (push, AI) known now
+handleIntent();
