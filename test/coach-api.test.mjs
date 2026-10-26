@@ -29,7 +29,8 @@ before(() => {
   };
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  (await import('../lib/server.js')).resetLimitsForTests();
   calls = [];
   process.env.OPENROUTER_API_KEY = 'sk-or-test';
   delete process.env.OPENROUTER_MODEL;
@@ -37,7 +38,8 @@ beforeEach(() => {
   respond = () => completion(JSON.stringify(plan));
 });
 
-const post = (body) => new Request('https://track.test/api/coach', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+const COACHING = { version: 1, scopes: ['coaching'] };
+const post = (body) => new Request('https://track.test/api/coach', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ consent: COACHING, ...body }) });
 const summary = { plan_today: { cap: 15 }, last_14_days: [] };
 
 test('reports a missing key as not configured', async () => {
@@ -143,7 +145,8 @@ test('OPENROUTER_MODEL overrides the model', async () => {
 
 test('OpenRouter errors become clear messages', async () => {
   const { default: coach } = await import('../api/coach.js');
-  const errorFor = async (make) => { respond = make; const r = await coach.fetch(post({ summary })); return [r.status, (await r.json()).error]; };
+  const { resetLimitsForTests } = await import('../lib/server.js');
+  const errorFor = async (make) => { resetLimitsForTests(); respond = make; const r = await coach.fetch(post({ summary })); return [r.status, (await r.json()).error]; };
   assert.deepEqual(await errorFor(() => apiError(401, 'No auth')), [503, 'OpenRouter key was rejected; check OPENROUTER_API_KEY']);
   assert.match((await errorFor(() => apiError(402, 'Insufficient credits')))[1], /out of credits/);
   assert.equal((await errorFor(() => apiError(429, 'Rate limited')))[0], 429);

@@ -19,6 +19,22 @@ if (existsSync(envFile)) {
   }
 }
 
+// The same response headers as production (vercel.json), so local tests run under
+// the real Content Security Policy. HTTPS-only parts are dropped for http://localhost.
+const VERCEL_HEADERS = JSON.parse(readFileSync(join(root, 'vercel.json'), 'utf8')).headers || [];
+function configHeaders(pathname) {
+  const out = {};
+  for (const rule of VERCEL_HEADERS) {
+    const re = new RegExp(`^${rule.source.replace(/\(\.\*\)/g, '.*')}$`);
+    if (!re.test(pathname)) continue;
+    for (const { key, value } of rule.headers) {
+      if (key === 'Strict-Transport-Security') continue;
+      out[key.toLowerCase()] = key === 'Content-Security-Policy' ? value.replace(/;\s*upgrade-insecure-requests/, '') : value;
+    }
+  }
+  return out;
+}
+
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png',
@@ -51,7 +67,7 @@ async function serveStatic(res, pathname) {
   } catch {
     return res.writeHead(404).end('Not found');
   }
-  const headers = { 'content-type': TYPES[extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' };
+  const headers = { ...configHeaders(pathname), 'content-type': TYPES[extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' };
   res.writeHead(200, headers).end(await readFile(file));
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "track",
-  "version": "1.0.0",
+  "version": "2.0.1",
   "private": true,
   "description": "90-day health reset tracker: Tansen taper, 30-min mileage, calisthenics and vegetarian nutrition — a PWA with push reminders, hosted on Vercel.",
   "type": "module",
@@ -10,13 +10,15 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "test": "node --test test/*.test.mjs",
-    "vapid": "web-push generate-vapid-keys"
+    "vapid": "web-push generate-vapid-keys",
+    "e2e": "node test/e2e/journeys.mjs"
   },
   "dependencies": {
     "@upstash/qstash": "2.12.1",
     "web-push": "3.6.7"
   },
   "devDependencies": {
-    "jose": "5.10.0"
+    "jose": "5.10.0",
+    "playwright": "1.63.0"
   }
 }

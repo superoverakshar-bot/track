@@ -5,8 +5,11 @@
 // OpenAI GPT-6 Sol) then double-checks each tweak; only confirmed or adjusted
 // tweaks are returned for the app to apply.
 // Requires OPENROUTER_API_KEY. OPENROUTER_MODEL and OPENROUTER_REVIEW_MODEL override the models.
-import { HttpError, aiModel, aiReviewModel, checkAccess, handle, json, publicBaseUrl, readJson } from '../lib/server.js';
+import {
+  HttpError, addAiSpend, aiModel, aiReviewModel, checkAccess, checkAiBudget, handle, json, publicBaseUrl, rateLimit, readJson,
+} from '../lib/server.js';
 import { MAX_SHIFT_MIN, MAX_TWEAKS, TUNABLE, TUNABLE_KEYS } from '../public/js/reminders.js';
+import { coachingAllowed, stripPrivate } from '../public/js/privacy-rules.js';
 
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -104,7 +107,7 @@ const ERRORS = {
 const validValue = (target, v) => (TUNABLE[target]?.number ? /^\d(\.\d{1,2})?$/.test(v) : /^([01]\d|2[0-3]):[0-5]\d$/.test(v));
 
 // One structured-output call. Returns { result, cost, model }.
-async function ask(request, { model, system, user, name, schema, timeoutMs }) {
+async function ask(request, { model, system, user, name, schema, timeoutMs, maxTokens }) {
   let res;
   try {
     res = await fetch(ENDPOINT, {
@@ -122,7 +125,7 @@ async function ask(request, { model, system, user, name, schema, timeoutMs }) {
         // Only route to providers that honour the JSON schema.
         provider: { require_parameters: true },
         usage: { include: true }, // report the cost of each call
-        max_tokens: 8000,
+        max_tokens: maxTokens,
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -134,7 +137,7 @@ async function ask(request, { model, system, user, name, schema, timeoutMs }) {
   const data = await res.json().catch(() => null);
   if (!res.ok || data?.error) {
     const code = res.ok ? Number(data?.error?.code) : res.status;
-    console.error('OpenRouter error', model, code, data?.error?.message);
+    console.error('OpenRouter error', model, code); // never the message: it can echo the request
     const [status, message] = ERRORS[code] || [502, `AI service error (${code || 'unknown'})`];
     throw new HttpError(status, message);
   }
@@ -167,6 +170,7 @@ async function review(request, model, summary, proposed, deadline) {
     user: `Check these proposed schedule changes:\n${JSON.stringify(input)}`,
     name: 'tweak_review',
     schema: REVIEW_SCHEMA,
+    maxTokens: 1500,
     timeoutMs: Math.max(5000, deadline - Date.now()),
   });
   const verdicts = Array.isArray(result?.verdicts) ? result.verdicts : [];
@@ -195,9 +199,15 @@ export default {
     if (request.method !== 'POST') throw new HttpError(405, 'POST only');
     if (!process.env.OPENROUTER_API_KEY) throw new HttpError(503, 'AI coach is not configured (missing OPENROUTER_API_KEY)');
     checkAccess(request);
+    rateLimit(request, 'coach-burst', 3, 60000);
+    rateLimit(request, 'coach-day', 40, 86400000);
+    checkAiBudget();
     const body = await readJson(request, 60000);
-    const summary = body.summary;
-    if (!summary || typeof summary !== 'object' || Array.isArray(summary)) throw new HttpError(400, 'Missing data summary');
+    if (!body.summary || typeof body.summary !== 'object' || Array.isArray(body.summary)) throw new HttpError(400, 'Missing data summary');
+    // The app only calls with consent; refuse anything else, and drop private
+    // wellness fields unless that category is consented too.
+    if (!coachingAllowed(body.consent)) throw new HttpError(403, 'AI coaching consent is required');
+    const summary = body.consent.scopes.includes('sexualWellness') ? body.summary : stripPrivate(body.summary);
     const question = typeof body.question === 'string' ? body.question.trim().slice(0, 500) : '';
     const auto = body.mode === 'auto';
     const ask24h = auto
@@ -211,6 +221,7 @@ export default {
       name: 'coach_plan',
       schema: SCHEMA,
       timeoutMs: 32_000,
+      maxTokens: 4000,
     });
     const result = plan.result;
     if (typeof result?.headline !== 'string' || !Array.isArray(result?.actions)) throw new HttpError(502, 'The AI reply was incomplete. Try again');
@@ -230,11 +241,12 @@ export default {
         cost += r.cost;
       } catch (err) {
         // No second opinion, no changes: the plan still comes back.
-        console.error('Review failed', err.message);
+        console.error('Review failed', err.status || err.name);
         result.tweaks = [];
         result.review = { model: reviewer, error: 'The second check was unavailable, so no schedule changes were made.', rejected: proposed.map((t) => ({ ...t, reason: 'Not checked' })) };
       }
     }
+    addAiSpend(cost);
     return json({ ok: true, result, model: plan.model, reviewModel: reviewer, cost: Math.round(cost * 1e6) / 1e6 });
   }),
 };
