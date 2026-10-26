@@ -539,6 +539,10 @@ ul.insights li + li { border-top: 1px solid var(--line); }
 ul.insights li svg { margin-top: 3px; color: var(--accent); }
 details.more summary { cursor: pointer; font-weight: 700; font-size: 14px; color: var(--accent); padding: 6px 0; }
 .ai-result { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.forecast-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.fc { font-size: 13px; font-weight: 700; padding: 5px 10px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.fc.fits { background: color-mix(in srgb, var(--good) 14%, transparent); }
+.fc.guard { background: color-mix(in srgb, var(--warn, #d97706) 18%, transparent); }
 .ap-head { align-items: flex-start; gap: 12px; }
 .ap-head .grow { display: grid; gap: 4px; }
 .ap-status { margin-top: 10px; font-weight: 700; }

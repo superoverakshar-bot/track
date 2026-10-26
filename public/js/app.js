@@ -4,7 +4,7 @@ import { badges } from './achievements.js';
 import { celebrate } from './joy.js';
 import { nextWindow, pouchFreeHours } from './taper.js';
 import { actions, autoFinishCraving } from './actions.js';
-import { initNotifications, scheduleLocal } from './notify.js';
+import { initNotifications, refreshUrgeAlert, scheduleLocal } from './notify.js';
 import { emptyDay, getState, logEvent, noteOpen, peekDay, subscribe, todayKey, update } from './store.js';
 import * as autopilot from './autopilot.js';
 import { clock, dialog, esc, icon, longDate, mmss, since, toast, vibrate } from './ui.js';
@@ -117,6 +117,7 @@ function noteActivity(name, el) {
   const kind = typeof EVENT_KIND[name] === 'function' ? EVENT_KIND[name](el) : EVENT_KIND[name];
   update(() => logEvent(kind));
   autopilot.poke();
+  if (['pouch-log', 'pouch-done', 'craving-start', 'craving-saved'].includes(name)) refreshUrgeAlert();
 }
 
 const CHANGES = { ...taper.changes, ...fuel.changes, ...settings.changes, ...coachView.coachChanges };
@@ -430,8 +431,10 @@ window.addEventListener('beforeinstallprompt', (e) => {
   render();
 });
 function opened() {
-  if (getState().settings.onboarded) update(() => noteOpen());
+  if (!getState().settings.onboarded) return;
+  update(() => noteOpen());
   autopilot.poke(5000);
+  refreshUrgeAlert();
 }
 
 document.addEventListener('visibilitychange', () => {

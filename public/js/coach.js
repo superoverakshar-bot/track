@@ -8,7 +8,7 @@ import {
 import { checklist, cutoffTs, microSetDone, morningLockEnd, planFor, streak, totalReps, wakeTs } from './logic.js';
 import { TUNABLE, formatTunable, resolveReminders, tunableValues } from './reminders.js';
 import { emptyDay, getState, peekDay, todayKey } from './store.js';
-import { fmtGap, nextWindow, triggerStats } from './taper.js';
+import { fmtGap, forecast, nextWindow, triggerStats } from './taper.js';
 
 const MIN = 60000;
 const HOUR = 3600000;
@@ -618,6 +618,10 @@ export function aiSummary({ includePrivate = false, now = Date.now() } = {}) {
     tunable: tunableValues(s, { includePrivate }),
     pinned: Object.entries(st.autopilot.pins).filter(([t, until]) => until > now && (includePrivate || !TUNABLE[t]?.private)).map(([t]) => t),
     typical_times: typicalTimes({ includePrivate }),
+    urge_forecast_today: (() => {
+      const f = forecast(key, rec, now);
+      return f.ready ? { predicted_urges: f.urges.map((u) => ({ at: clock(u.at), fits_plan: u.fits })), projected_total: f.projected, cap: f.cap } : null;
+    })(),
     recent_plan_changes: st.autopilot.log.filter((c) => includePrivate || !TUNABLE[c.target]?.private).slice(-6)
       .map((c) => ({ when: clock(c.at), date: dayKeyAt(c.at), target: c.target, from: formatTunable(c.target, c.from), to: formatTunable(c.target, c.to), undone_by_user: !!c.undone })),
     today: dayRow(key, rec),

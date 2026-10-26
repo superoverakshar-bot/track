@@ -2,7 +2,7 @@ import { MORNING_LOCK_MIN, PHASES, PROGRAM_DAYS, ZERO_DAY, addDays, capSchedule,
 import { FLAG_TEXT, planFor, programKeysSoFar, rangeKeys, stats, wakeTs } from '../logic.js';
 import { timeChart } from '../charts.js';
 import { emptyDay, getState, peekDay, todayKey, update, dayRecord } from '../store.js';
-import { scheduleOnce } from '../notify.js';
+import { refreshUrgeAlert, scheduleOnce } from '../notify.js';
 import { clock, esc, icon, plural, toast } from '../ui.js';
 import { bufferCard, cardHead } from './parts.js';
 import { SOS, WITHDRAWAL, fmtGap, lastPouchEver, nextWindow, taperProgress, triggerById, triggerStats, withdrawalFor } from '../taper.js';
@@ -223,6 +223,10 @@ export function mount(root) {
 }
 
 export const changes = {
+  'urge-alerts': (el) => {
+    update((s) => { s.settings.urgeAlerts = el.checked; });
+    refreshUrgeAlert();
+  },
   'wake-at': (el) => {
     if (!el.value) return;
     const ts = tsForDayTime(todayKey(), el.value);

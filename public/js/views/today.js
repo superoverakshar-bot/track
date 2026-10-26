@@ -3,7 +3,7 @@ import { TUNABLE } from '../reminders.js';
 import { avoidedPouches, coach } from '../coach.js';
 import { lineOfTheDay, partOfDay } from '../joy.js';
 import { gapEnd, morningLockEnd, planFor, pouchEnd, pouchIn } from '../logic.js';
-import { nextWindow, taperProgress } from '../taper.js';
+import { forecast, nextWindow, taperProgress } from '../taper.js';
 import { mode as notifyMode } from '../notify.js';
 import { emptyDay, getState, peekDay, todayKey } from '../store.js';
 import { clock, esc, icon } from '../ui.js';
@@ -70,6 +70,34 @@ function heroCard(key, rec, now) {
       <div><b>${capStreak}${capStreak ? '🔥' : ''}</b><span>days under cap</span></div>
     </div>
     <p class="quote small">“${esc(lineOfTheDay(key))}”</p>
+  </section>`;
+}
+
+// What the rest of today probably looks like, from when urges came on recent days.
+function forecastCard(key, rec, now) {
+  const plan = planFor(key);
+  if (plan.day < 1) return '';
+  const f = forecast(key, rec, now);
+  if (!f.ready) {
+    return `<section class="card forecast">${cardHead('Urge forecast', 'taper', `${f.days}/3 days`)}
+      <p class="small muted">Log your pouches and urges for 3 days and the app starts predicting when the next urge will hit, so you can get ahead of it.</p></section>`;
+  }
+  const mins = (t) => Math.max(1, Math.round((t - now) / 60000));
+  const nextLine = f.next
+    ? `Next likely urge <b>~${clock(f.next.at)}</b> (in ${mins(f.next.at) >= 60 ? `${Math.floor(mins(f.next.at) / 60)} h ${mins(f.next.at) % 60} m` : `${mins(f.next.at)} min`}). ${f.next.fits ? 'Your plan has room for it.' : 'Your plan has no room for it: get ahead with water and elaichi, and start the buffer.'}`
+    : 'No more urges expected before bed. 🌙';
+  const over = f.projected - f.cap;
+  const pace = over > 0
+    ? `At your usual pace you'd end on <b>~${f.projected}</b>, ${over} over your cap of ${f.cap}. Buffer the 🛡️ ones.`
+    : `At your usual pace you'd end on <b>~${f.projected}</b>, within your cap of ${f.cap} ✓`;
+  const byNow = f.typicalByNow >= 1 && f.used < f.typicalByNow - 0.5 ? `<p class="small" style="margin-top:6px">🎉 ${f.used} so far vs about ${Math.round(f.typicalByNow)} by now on a usual day.</p>` : '';
+  return `<section class="card forecast">
+    ${cardHead('Urge forecast', 'taper', `from your last ${f.days} days`)}
+    <p>${nextLine}</p>
+    ${f.urges.length ? `<div class="forecast-row" aria-label="Predicted urges">${f.urges.map((u) => `<span class="fc ${u.fits ? 'fits' : 'guard'}" title="${u.fits ? 'Fits your plan' : 'Buffer this one'}">${u.fits ? '✅' : '🛡️'} ${clock(u.at)}</span>`).join('')}</div>` : ''}
+    <p class="small muted" style="margin-top:8px">${pace}</p>
+    ${byNow}
+    <label class="row small" style="margin-top:10px"><input type="checkbox" data-change="urge-alerts" ${getState().settings.urgeAlerts ? 'checked' : ''}> 🔔 Heads-up 10 minutes before a likely urge</label>
   </section>`;
 }
 
@@ -143,6 +171,7 @@ export function render() {
   return `<div class="stack">
     ${heroCard(key, rec, now)}
     ${bufferCard(now)}
+    ${forecastCard(key, rec, now)}
     ${smartCard()}
     ${planCard(key)}
     ${checklistCard(key, rec)}

@@ -22,6 +22,7 @@ export function defaultSettings() {
     why: '', // personal reason, shown on Today and during urges
     pricePerPouch: 0, // ₹, for money saved
     pouchMin: 20, // how long you usually keep a pouch in; learned from your Done taps
+    urgeAlerts: true, // heads-up 10 min before a predicted urge
     aiPrivate: true,
     pushCode: '',
     onboarded: false,

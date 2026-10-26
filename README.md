@@ -140,6 +140,8 @@ Caps come from your **baseline** (pouches/day before day 1; default 20). Each bl
 
 A tracking day runs from 04:00 to 03:59, so a late night counts toward the day you started.
 
+**Urge forecast:** from when your pouches and beaten urges happened over the last 14 days (recent days count more), Today predicts the rest of today's urges, marks each ✅ (your pacing plan has room) or 🛡️ (buffer it), and projects your end-of-day total against the cap. It updates every time you log, and sends a heads-up notification 10 minutes before the next likely urge (switch on the card). It needs 3 days of logs to start.
+
 **Pouch in, pouch out:** logging a pouch shows *Pouch in* with an **It's out** button (also on the reminder that fires when your usual time is up). The next-pouch time and the 2-hour gap count from when it came out, not when it went in. If you don't tap, the app assumes your usual time in (Settings, default 20 min), and learns that time from your taps.
 
 **Pacing within a day:** the pouches left are spread evenly from when your last pouch came out (or the end of the morning lock) until last call, one hour before bed, at least 30 minutes apart and at least 2 hours apart from day 31. If you log one early, the app asks you to run the buffer first, and the next window moves later so the cap still lasts the day.

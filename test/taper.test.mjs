@@ -120,3 +120,34 @@ test('coach turns triggers into a plan; taper badges and afternoon line', async 
   const snap = smartSnapshot(at(today, '15:30'));
   assert.match(smartLine(snap, 'taperCheck', at(today, '15:30')).body, /0 of 15 used, 15 left\. At most one every \d+ min, last call 22:00/);
 });
+
+test('forecast predicts the rest of today from recent urge times', async () => {
+  const { forecast } = await import('../public/js/taper.js');
+  const saved = getState().days;
+  setStart(20);
+  update((s) => {
+    s.days = {};
+    for (let i = 1; i <= 7; i++) {
+      const k = addDays(today, -i);
+      s.days[k] = { ...emptyDay(), pouches: ['10:05', '16:10', '20:40'].map((t) => ({ ts: at(k, t), flags: [], endTs: at(k, t) + 15 * 60000 })), urges: [{ ts: at(k, '16:20') }] };
+    }
+  });
+  assert.equal(forecast(today, emptyDay(), at(today, '09:00'), 2).ready, false); // needs 3 days
+  const f = forecast(today, emptyDay(), at(today, '09:00'));
+  assert.equal(f.days, 7);
+  assert.deepEqual(f.urges.map((u) => u.at), [at(today, '10:15'), at(today, '16:08'), at(today, '16:23'), at(today, '20:45')]); // two urges in one half-hour get spread out
+  assert.equal(f.projected, 4);
+  assert.equal(f.typicalByNow, 0);
+  assert.ok(f.urges.every((u) => u.fits)); // cap 15 has room for all
+  // Day 80 (cap 1): only the first predicted urge after the lock has a window; the rest need the buffer.
+  setStart(79);
+  const tight = forecast(today, emptyDay(), at(today, '09:00'));
+  assert.equal(tight.cap, 1);
+  assert.deepEqual(tight.urges.map((u) => u.fits), [true, false, false, false]);
+  setStart(20);
+  const late = forecast(today, emptyDay(), at(today, '17:00'));
+  assert.equal(late.typicalByNow, 3);
+  assert.deepEqual(late.urges.map((u) => u.at), [at(today, '20:45')]);
+  update((s) => { s.days = saved; });
+  setStart(0);
+});

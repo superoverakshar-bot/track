@@ -45,6 +45,7 @@ test('every key produces copy with a title, body and url', () => {
   assert.match(buildMessage('checkin', ctx, now).body, /Cap today: 7 pouches/);
   assert.match(buildMessage('gap', ctx, now, { remaining: 1 }).body, /1 pouch left/);
   assert.match(buildMessage('pouchOut', ctx, now, { next: '11:40' }).body, /Spit it out.*next one fits at 11:40/);
+  assert.match(buildMessage('urgeSoon', ctx, now, { next: '16:10' }).body, /around 16:10/);
   assert.doesNotMatch(buildMessage('pouchOut', ctx, now, { next: '<b>' }).body, /<b>/);
   assert.match(buildMessage('dinner', ctx, now).title, /20:30/);
   assert.ok(SCHEDULED_KEYS.length && ONCE_KEYS.every((k) => ALL_KEYS.includes(k)));

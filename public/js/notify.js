@@ -4,8 +4,9 @@
 //            backgrounded. Used when the server isn't configured.
 import { addDays, tsForDayTime, weekday } from './plan.js';
 import { buildMessage, messageContext, resolveReminders } from './reminders.js';
-import { getState, peekDay, subscribe, todayKey, update } from './store.js';
+import { emptyDay, getState, peekDay, subscribe, todayKey, update } from './store.js';
 import { gapEnd, morningLockEnd, planFor, pouchEnd, pouchIn } from './logic.js';
+import { forecast } from './taper.js';
 import { postJson } from './api.js';
 import { smartLine, smartSnapshot } from './coach.js';
 
@@ -188,6 +189,30 @@ export async function scheduleOnce(key, at, data = {}) {
   scheduleLocal();
 }
 
+// Heads-up 10 minutes before the next predicted urge.
+const URGE_LEAD_MIN = 10;
+function urgeAlertAt(now = Date.now()) {
+  const s = getState();
+  if (!s.settings.urgeAlerts) return null;
+  const key = todayKey();
+  if (planFor(key).day < 1) return null;
+  const f = forecast(key, peekDay(key) || emptyDay(), now);
+  const u = f.ready && f.next;
+  const at = u ? u.at - URGE_LEAD_MIN * 60000 : 0;
+  return u && at > now + 60000 ? { at, next: new Date(u.at).toTimeString().slice(0, 5) } : null;
+}
+
+// After each log the forecast moves; keep the server-side heads-up in step.
+export function refreshUrgeAlert() {
+  if (mode() !== 'push') return scheduleLocal();
+  const soon = urgeAlertAt();
+  const n = getState().notify;
+  if (soon?.at === n.urgeSoonAt) return;
+  update((st) => { st.notify.urgeSoonAt = soon?.at || null; });
+  if (soon) scheduleOnce('urgeSoon', soon.at, { next: soon.next }).catch(() => null);
+  else cancelOnce('urgeSoon');
+}
+
 export function cancelOnce(key) {
   const id = getState().notify.once[key];
   if (id) {
@@ -270,6 +295,8 @@ export function scheduleLocal() {
   if (g && local('gap')) events.push({ key: 'gap', at: g, data: { remaining: Math.max(0, planFor(key).cap - rec.pouches.length) } });
   const inMouth = pouchIn(rec, now);
   if (inMouth && local('pouchOut')) events.push({ key: 'pouchOut', at: pouchEnd(inMouth) });
+  const soon = urgeAlertAt(now);
+  if (soon && local('urgeSoon')) events.push({ key: 'urgeSoon', at: soon.at, data: { next: soon.next } });
 
   for (const e of events) {
     const delay = e.at - now;

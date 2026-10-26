@@ -1,4 +1,4 @@
-// Tansen taper engine: pacing windows, triggers and taper progress.
+// Tansen taper engine: pacing windows, urge forecast, triggers and taper progress.
 import { GAP_MIN, addDays, tsForDayTime } from './plan.js';
 import { gapEnd, lastPouchEnd, morningLockEnd, planFor } from './logic.js';
 import { getState, peekDay, todayKey } from './store.js';
@@ -69,6 +69,81 @@ export function nextWindow(key, rec, now = Date.now()) {
   next = Math.max(next, lockEnd, gapEnd(key, rec) || 0);
   if (next > lastCall) return { remaining, next: null, reason: 'bedtime', lastCall, spacingMin };
   return { remaining, next, spacingMin, open: now >= next, reason: now < lockEnd ? 'lock' : 'pace', lastCall };
+}
+
+// ---- forecast ----
+
+const SLOT_MIN = 30;
+const SLOTS = 48; // a tracking day, 04:00 to 04:00
+const RECENCY = 0.85; // yesterday counts fully, last week about a third
+
+// Predict the rest of today's urges from when they came on recent days (pouches
+// and beaten urges both count as an urge). Each predicted urge is matched against
+// the pacing plan: it either fits a window or needs the buffer.
+export function forecast(key, rec, now = Date.now(), n = 14) {
+  const rate = new Array(SLOTS).fill(0);
+  let weight = 0;
+  let days = 0;
+  for (let i = 1; i <= n; i++) {
+    const k = addDays(key, -i);
+    const d = peekDay(k);
+    const times = d ? [...d.pouches.map((p) => p.ts), ...(d.urges || []).map((u) => u.ts)] : [];
+    if (!times.length) continue;
+    const w = RECENCY ** (i - 1);
+    const start = tsForDayTime(k, '04:00');
+    for (const t of times) {
+      const b = Math.floor((t - start) / MIN / SLOT_MIN);
+      if (b >= 0 && b < SLOTS) rate[b] += w;
+    }
+    weight += w;
+    days++;
+  }
+  if (days < 3) return { ready: false, days };
+  for (let b = 0; b < SLOTS; b++) rate[b] /= weight;
+
+  const start = tsForDayTime(key, '04:00');
+  const bed = tsForDayTime(key, getState().settings.sleepTime);
+  const slotLen = SLOT_MIN * MIN;
+  const nowBin = Math.min(SLOTS - 1, Math.max(0, Math.floor((now - start) / slotLen)));
+  const doneFrac = Math.min(1, Math.max(0, (now - start - nowBin * slotLen) / slotLen));
+  let typicalByNow = rate[nowBin] * doneFrac;
+  for (let b = 0; b < nowBin; b++) typicalByNow += rate[b];
+
+  // Walk forward; a predicted urge sits where the running total crosses 0.5, 1.5, 2.5…
+  const urges = [];
+  let acc = 0;
+  for (let b = nowBin; b < SLOTS; b++) {
+    const from = b === nowBin ? now : start + b * slotLen;
+    const to = Math.min(start + (b + 1) * slotLen, bed);
+    if (to <= from) { if (from >= bed) break; continue; }
+    const add = rate[b] * ((to - from) / slotLen);
+    while (add > 0 && acc + add >= urges.length + 0.5) {
+      const f = (urges.length + 0.5 - acc) / add;
+      urges.push({ at: Math.round((from + f * (to - from)) / MIN) * MIN, strength: rate[b] });
+    }
+    acc += add;
+  }
+
+  // Which of them the pacing plan has room for (earliest windows first).
+  const w = nextWindow(key, rec, now);
+  const windows = [];
+  if (w.next) for (let t = w.next; t <= w.lastCall && windows.length < w.remaining; t += w.spacingMin * MIN) windows.push(t);
+  let wi = 0;
+  for (const u of urges) {
+    if (wi < windows.length && windows[wi] <= u.at) { u.fits = true; wi++; } else u.fits = false;
+  }
+  const used = rec?.pouches?.length || 0;
+  return {
+    ready: true,
+    days,
+    urges,
+    next: urges[0] || null,
+    expectedLeft: acc,
+    projected: Math.round(used + acc),
+    cap: planFor(key).cap,
+    typicalByNow: Math.round(typicalByNow * 10) / 10,
+    used,
+  };
 }
 
 // Latest pouch across all days (for "time pouch-free").
